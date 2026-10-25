@@ -441,7 +441,7 @@ var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
 var TVMAZE_API = 'https://api.tvmaze.com';
 var GITHUB_API = 'https://api.github.com';
 var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
-var APP_VERSION = '2.2.0';                   // VER-1: must match the newest changelog entry
+var APP_VERSION = '2.3.0';                   // VER-1: must match the newest changelog entry
 var CONFIRM_MS = 5000;                       // ADD-5: how long the add confirmation shows
 
 // === PURE LOGIC START ===
@@ -728,13 +728,48 @@ function isValidPayload(p) {
 
 // Parses gist or backup text. Returns { ok: true, payload } or
 // { ok: false, reason } where reason is 'json' (not JSON), 'v1' (a V1
-// backup: a bare array) or 'shape' (JSON, but not a V2 payload).
+// backup: a bare array, also returned as `items`) or 'shape' (JSON, but
+// not a V2 payload).
 function parsePayloadText(text) {
   var parsed;
   try { parsed = JSON.parse(text); } catch (e) { return { ok: false, reason: 'json' }; }
-  if (Array.isArray(parsed)) return { ok: false, reason: 'v1' };
+  if (Array.isArray(parsed)) return { ok: false, reason: 'v1', items: parsed };
   if (!isValidPayload(parsed)) return { ok: false, reason: 'shape' };
   return { ok: true, payload: parsed };
+}
+
+// --- V1 backup import (SET-4) ----------------------------------------------
+
+// The DATA-2 fields copied from a V1 entry; anything else is left behind.
+var V1_IMPORT_FIELDS = ['showId', 'platform', 'watchedEpisodeId', 'pendingSeasonNumber',
+  'availableOrder', 'archived', 'archivedAt', 'archivedSnapshot'];
+
+// Why a V1 entry can't be imported (shown to the user, SET-4).
+var V1_SKIP_REASONS = {
+  platform: 'No "Watching on" platform in the V1 backup (required in V2).',
+  oldformat: 'Saved by an older version of V1 in a format V2 can\u2019t read.',
+  invalid: 'This entry in the backup file is incomplete or damaged.'
+};
+
+// Splits V1 backup entries into { importable, skipped }. Importable entries
+// are copied with only the DATA-2 fields and a trimmed platform. Skipped
+// entries are { showId (number or null), reason } with a V1_SKIP_REASONS key.
+// Repeated showIds are imported once.
+function splitV1Backup(items) {
+  var importable = [], skipped = [], seen = {};
+  items.forEach(function (raw) {
+    var showId = isPlainObject(raw) && typeof raw.showId === 'number' ? raw.showId : null;
+    if (showId !== null && seen[showId]) return;
+    if (isPlainObject(raw) && raw.watchedThrough !== undefined) { skipped.push({ showId: showId, reason: 'oldformat' }); return; }
+    if (!isValidLibraryItem(raw)) { skipped.push({ showId: showId, reason: 'invalid' }); return; }
+    if (!raw.platform || !raw.platform.trim()) { skipped.push({ showId: showId, reason: 'platform' }); return; }
+    var item = {};
+    V1_IMPORT_FIELDS.forEach(function (f) { if (raw[f] !== undefined) item[f] = raw[f]; });
+    item.platform = raw.platform.trim();
+    seen[showId] = true;
+    importable.push(item);
+  });
+  return { importable: importable, skipped: skipped };
 }
 
 // --- V2 sync decisions (GST-3, GST-7) ------------------------------------
@@ -873,6 +908,14 @@ function searchShows(query) {
       if (!r.ok) throw new Error('TVmaze returned ' + r.status);
       return r.json();
     });
+}
+
+// Just a show's name, for listing V1 entries that weren't imported.
+// Resolves to null when it can't be looked up.
+function fetchShowName(showId) {
+  return fetch(TVMAZE_API + '/shows/' + showId)
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (show) { return show && show.name ? show.name : null; }, function () { return null; });
 }
 
 // Show info plus every episode. Uses ?specials=1 because ?embed=episodes
@@ -1158,7 +1201,7 @@ function freshSetupState() {
 }
 
 var state = {
-  view: 'loading', // setup | loading | list | add | detail | settings | sync | backup
+  view: 'loading', // setup | loading | list | add | detail | settings | sync | backup | importreport
   library: [],
   computed: {},     // showId -> { show, episodes, status }
   segment: 'watching',
@@ -1167,6 +1210,7 @@ var state = {
   addFlow: null,
   detailShowId: null,
   errorBanner: '',
+  importReport: null, // SET-4 result shown after a V1 import
   setup: freshSetupState(),
   syncUi: { changingToken: false, token: '', busy: false, message: '' }
 };
@@ -1182,6 +1226,7 @@ function render() {
   if (state.view === 'settings') return renderSettings();
   if (state.view === 'sync') return renderSync();
   if (state.view === 'backup') return renderBackup();
+  if (state.view === 'importreport') return renderImportReport();
   return renderList();
 }
 
@@ -1212,7 +1257,7 @@ function syncIndicatorHtml() {
     SYNC_LABELS[sync.status] + '</button>';
 }
 
-// "Version 2.2.0" under the wordmark, linking to the changelog (VER-1).
+// "Version 2.3.0" under the wordmark, linking to the changelog (VER-1).
 function versionLineHtml() {
   return '<a class="version-link" id="version-link" href="changelog/">Version ' + APP_VERSION + '</a>';
 }
@@ -1260,7 +1305,7 @@ function renderToolbar() {
     bar.innerHTML = '';
     return;
   }
-  var active = { list: 'show', detail: 'show', add: 'add', settings: 'settings', sync: 'settings', backup: 'settings' }[state.view];
+  var active = { list: 'show', detail: 'show', add: 'add', settings: 'settings', sync: 'settings', backup: 'settings', importreport: 'settings' }[state.view];
   bar.className = '';
   bar.innerHTML = '<div class="bar">' +
     '<button id="tab-show" class="' + (active === 'show' ? 'active' : '') + '">▣ Show</button>' +
@@ -2002,10 +2047,9 @@ function handleRestoreFile(file) {
   var reader = new FileReader();
   reader.onload = function () {
     var result = parsePayloadText(reader.result);
+    if (!result.ok && result.reason === 'v1') { importV1Backup(result.items, statusEl); return; }
     if (!result.ok) {
-      statusEl.innerHTML = '<p class="error-text">' + (result.reason === 'v1'
-        ? 'That is a My Shows V1 backup. V2 is a separate app and can’t import V1 lists.'
-        : 'That file does not look like a valid My Shows V2 backup.') + '</p>';
+      statusEl.innerHTML = '<p class="error-text">That file does not look like a valid My Shows backup.</p>';
       return;
     }
     var ok = window.confirm('Replace your list with this backup?\n\nEvery show currently in My Shows will be replaced by the ' +
@@ -2025,6 +2069,64 @@ function handleRestoreFile(file) {
   reader.readAsText(file);
 }
 
+// SET-4: a V1 backup replaces the whole V2 list after confirmation, the
+// same as a V2 restore. Shows that can't be imported are left out and
+// listed afterwards with the reason.
+function importV1Backup(items, statusEl) {
+  var split = splitV1Backup(items);
+  if (split.importable.length === 0 && split.skipped.length === 0) {
+    statusEl.innerHTML = '<p class="error-text">That V1 backup has no shows in it.</p>';
+    return;
+  }
+  var message = state.library.length === 0
+    ? 'Import ' + split.importable.length + ' show(s) from your My Shows V1 backup?'
+    : 'Replace your list with this My Shows V1 backup?\n\nEvery show currently in My Shows will be replaced by the ' +
+      split.importable.length + ' show(s) that can be imported, on all your devices once it syncs. This can\u2019t be undone.';
+  if (split.skipped.length) message += '\n\n' + split.skipped.length + ' show(s) can\u2019t be imported. They\u2019ll be listed next, with the reason, so you can add them again.';
+  if (!window.confirm(message)) return;
+
+  state.library = split.importable;
+  state.computed = {};
+  saveLibrary(state.library);
+  state.view = 'loading';
+  render();
+  var names = Promise.all(split.skipped.map(function (s) {
+    return s.showId === null ? Promise.resolve(null) : fetchShowName(s.showId);
+  }));
+  Promise.all([refreshComputedFor(state.library), names]).then(function (results) {
+    state.importReport = {
+      imported: split.importable.length,
+      skipped: split.skipped.map(function (s, i) {
+        var name = results[1][i] || (s.showId === null ? 'Unknown show' : 'TVmaze show #' + s.showId);
+        return { name: name, reason: V1_SKIP_REASONS[s.reason] };
+      })
+    };
+    state.view = 'importreport';
+    render();
+  });
+}
+
+// SET-4 result: what was imported and which shows to add again, and why.
+function renderImportReport() {
+  var r = state.importReport;
+  var html = appHeaderHtml();
+  html += screenTitleHtml('V1 import', false);
+  html += '<p class="status-line">\u2713 ' + r.imported + ' show' + (r.imported === 1 ? '' : 's') + ' imported.</p>';
+  if (r.skipped.length) {
+    html += '<p class="field-label" style="margin-top:16px;">Not imported \u2014 add these again with Add Show</p>';
+    html += '<div class="card-list" id="skipped-list">';
+    r.skipped.forEach(function (s) {
+      html += '<div class="row" style="cursor:default;"><div><p class="row-title">' + escapeHtml(s.name) + '</p>' +
+        '<p class="hint" style="margin:3px 0 0;">' + escapeHtml(s.reason) + '</p></div></div>';
+    });
+    html += '</div>';
+  }
+  html += '<button class="primary" id="report-done-btn" style="margin-top:20px;">Go to my shows</button>';
+  root.innerHTML = html;
+  bindChrome();
+  document.getElementById('report-done-btn').onclick = function () { state.importReport = null; openList(); };
+}
+
 function renderBackup() {
   var html = appHeaderHtml();
   html += screenTitleHtml('Backup & restore', true);
@@ -2032,7 +2134,7 @@ function renderBackup() {
   html += '<p class="hint" style="margin-bottom:8px;">Your list is already kept in your GitHub gist. A backup file is an extra copy you control.</p>';
   html += '<button id="download-backup-btn" style="width:100%;">Download backup file</button>';
   html += '<p class="field-label" style="margin-top:28px;">Restore</p>';
-  html += '<p class="hint" style="margin-bottom:8px;">Pick a previously saved My Shows V2 backup file. V1 backups can’t be used.</p>';
+  html += '<p class="hint" style="margin-bottom:8px;">Pick a previously saved My Shows backup file, from V2 or V1.</p>';
   html += '<input type="file" id="restore-file-input" accept="application/json,.json" style="display:none;" />';
   html += '<button id="restore-file-btn" style="width:100%;">Choose backup file</button>';
   html += '<div id="restore-status"></div>';

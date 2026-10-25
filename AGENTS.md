@@ -7,7 +7,7 @@
 - `index.html` is the shipped app, served at the site root (v2.myshows.fyi). It is a self-contained vanilla HTML/CSS/JavaScript file.
 - `guide/index.html` and `changelog/index.html` are separate static pages, linked from Settings.
 - `logic.test.js` contains unit tests and `app.test.js` is a jsdom integration suite. Both read the code straight out of `index.html`; there is **no** separate `logic.js` to keep in sync.
-- V2 is a separate app from V1 (`CyberAdvisor/MyShows`, myshows.fyi). Never read V1 storage keys or import V1 data.
+- V2 is a separate app from V1 (`CyberAdvisor/MyShows`, myshows.fyi). Never read V1 storage keys. The one V1 path is restoring a V1 **backup file** (`splitV1Backup` / `importV1Backup`, CLAUDE.md SET-4): entries are copied with only the DATA-2 fields, and anything that can't be imported is listed for the user, never converted.
 
 ## Development rules
 

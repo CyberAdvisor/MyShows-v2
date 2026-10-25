@@ -25,7 +25,7 @@ const {
   segmentForStatus, displaySegment, groupTagLabel, buildSegments, segmentCounts, searchEntries,
   isValidLibraryItem, isValidLibrary, wrapPayload, isValidPayload, parsePayloadText,
   decideSync, nextTimestamp, findCandidateGistIds, classifyCandidates, describeSyncError, formatSyncTime,
-  lastAiredEpisodeId, APP_VERSION, stepWatchedEpisode
+  lastAiredEpisodeId, APP_VERSION, stepWatchedEpisode, splitV1Backup, V1_SKIP_REASONS
 } = L;
 
 const TODAY = '2026-07-12';
@@ -378,6 +378,31 @@ const TODAY = '2026-07-12';
   assert.strictEqual(stepWatchedEpisode(eps, 1, 1), 2, 'next skips one episode, specials included');
   assert.strictEqual(stepWatchedEpisode(eps, 3, 1), undefined, 'last episode: no next');
   assert.strictEqual(stepWatchedEpisode(eps, 999, -1), undefined, 'unknown watched id: cannot go back');
+}
+
+// --- SET-4: splitting a V1 backup ---
+{
+  const v1 = [
+    { showId: 501, platform: ' Hulu ', watchedEpisodeId: 1002, pendingSeasonNumber: null, availableOrder: -1, extra: 'dropped' },
+    { showId: 777, platform: '', watchedEpisodeId: 7001 },                      // no platform
+    { showId: 999, watchedEpisodeId: 9001 },                                    // platform missing entirely
+    { showId: 888, platform: 'Prime', watchedThrough: { season: 1, number: 1 } }, // very old V1 format
+    { showId: 'x', platform: 'Hulu' },                                          // damaged
+    'not an object',                                                            // damaged
+    { showId: 501, platform: 'Hulu', watchedEpisodeId: 1001 },                  // repeat: imported once
+    { showId: 251, platform: 'Peacock', watchedEpisodeId: 20864, archived: true, archivedAt: '2026-07-01',
+      archivedSnapshot: { lastWatchedCode: 'S02E07', episodesLeftInSeason: 3, seasonsRemaining: { remaining: 1, total: 2 } } }
+  ];
+  const { importable, skipped } = splitV1Backup(v1);
+  assert.deepStrictEqual(importable.map(i => i.showId), [501, 251], 'only complete entries with a platform are imported, repeats once');
+  assert.strictEqual(importable[0].platform, 'Hulu', 'platform trimmed');
+  assert.strictEqual(importable[0].extra, undefined, 'only DATA-2 fields are kept');
+  assert.strictEqual(importable[0].watchedEpisodeId, 1002, 'progress kept');
+  assert.strictEqual(importable[1].archived, true, 'suspended shows stay suspended');
+  assert.deepStrictEqual(skipped.map(s => [s.showId, s.reason]),
+    [[777, 'platform'], [999, 'platform'], [888, 'oldformat'], [null, 'invalid'], [null, 'invalid']]);
+  ['platform', 'oldformat', 'invalid'].forEach(r => assert.ok(V1_SKIP_REASONS[r], 'reason text for ' + r));
+  assert.deepStrictEqual(splitV1Backup([]), { importable: [], skipped: [] });
 }
 
 // --- VER-1: version constant ---

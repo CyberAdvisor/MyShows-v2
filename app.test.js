@@ -869,23 +869,81 @@ async function testBackupAndRestore() {
   await wait(20);
   assert.ok(text(env, '.error-text').includes('not look like a valid'), 'malformed file rejected');
 
-  input.onchange({ target: { files: [file(JSON.stringify([{ showId: 251 }]))] } });
-  await wait(20);
-  assert.ok(text(env, '.error-text').includes('V1 backup'), 'V1 backups are rejected with a clear message');
-
+  // A V1 backup over an existing list asks to replace it (SET-4); cancel keeps it.
   env.confirmAnswer = false;
-  input.onchange({ target: { files: [file(JSON.stringify(payload([{ showId: 251, platform: 'Peacock', watchedEpisodeId: 20865 }])))] } });
+  input.onchange({ target: { files: [file(JSON.stringify([{ showId: 251, platform: 'Peacock' }]))] } });
+  await wait(20);
+  assert.ok(env.confirmMessages.pop().includes('Replace your list with this My Shows V1 backup'), 'V1 restore over a list asks to replace it');
+  assert.strictEqual(storedLibrary(env)[0].showId, 501, 'cancelling leaves the list alone');
+
+  // V2 restore: confirm, cancel, then replace.
+  input.onchange({ target: { files: [file(JSON.stringify(payload([{ showId: 888, platform: 'Prime Video', watchedEpisodeId: 8001 }])))] } });
   await wait(20);
   assert.ok(env.confirmMessages.pop().includes('Replace your list'), 'restore asks for confirmation');
   assert.strictEqual(storedLibrary(env)[0].showId, 501, 'cancelling leaves the list alone');
-
   env.confirmAnswer = true;
-  input.onchange({ target: { files: [file(JSON.stringify(payload([{ showId: 251, platform: 'Peacock', watchedEpisodeId: 20865 }])))] } });
+  input.onchange({ target: { files: [file(JSON.stringify(payload([{ showId: 888, platform: 'Prime Video', watchedEpisodeId: 8001 }])))] } });
   await wait(120);
   assert.strictEqual(env.window.state.view, 'list');
-  assert.strictEqual(storedLibrary(env)[0].showId, 251, 'restored on this device');
-  assert.strictEqual(env.gh.content(env.gistId).library[0].showId, 251, 'and pushed to the gist');
+  assert.strictEqual(storedLibrary(env)[0].showId, 888, 'restored on this device');
+  assert.strictEqual(env.gh.content(env.gistId).library[0].showId, 888, 'and pushed to the gist');
+
+  // V1 restore confirmed: replaces the V2 list, same as a V2 restore.
+  click(env, 'tab-settings');
+  await wait(5);
+  click(env, 'settings-backup');
+  await wait(5);
+  const input2 = env.doc.getElementById('restore-file-input');
+  input2.onchange({ target: { files: [file(JSON.stringify([{ showId: 251, platform: 'Peacock', watchedEpisodeId: 20864 }]))] } });
+  await wait(120);
+  assert.deepStrictEqual(storedLibrary(env).map(i => i.showId), [251], 'confirming replaces the V2 list with the V1 shows');
+  assert.strictEqual(env.window.state.view, 'importreport', 'followed by the import report');
+  await wait(80);
+  assert.deepStrictEqual(env.gh.content(env.gistId).library.map(i => i.showId), [251], 'and synced');
   console.log('testBackupAndRestore passed.');
+}
+
+async function testV1BackupImport() {
+  const env = await start({ library: [] });
+  click(env, 'tab-settings');
+  await wait(5);
+  click(env, 'settings-backup');
+  await wait(5);
+  const input = env.doc.getElementById('restore-file-input');
+  const file = (content) => new env.window.File([content], 'my-shows-backup.json', { type: 'application/json' });
+  const v1Backup = JSON.stringify([
+    { showId: 501, platform: 'Hulu', watchedEpisodeId: 1002, pendingSeasonNumber: null },
+    { showId: 777, platform: '', watchedEpisodeId: 7001, pendingSeasonNumber: null },
+    { showId: 888, platform: 'Prime', watchedThrough: { season: 1, number: 1 } },
+    { showId: 251, platform: 'Peacock', watchedEpisodeId: 20864, archived: true, archivedAt: '2026-07-01',
+      archivedSnapshot: { lastWatchedCode: 'S02E07', episodesLeftInSeason: 3, seasonsRemaining: { remaining: 1, total: 2 } } }
+  ]);
+
+  env.confirmAnswer = false;
+  input.onchange({ target: { files: [file(v1Backup)] } });
+  await wait(20);
+  const question = env.confirmMessages.pop();
+  assert.ok(question.includes('Import 2 show(s)') && question.includes("2 show(s) can\u2019t be imported"), 'confirmation gives both counts');
+  assert.strictEqual(storedLibrary(env).length, 0, 'cancelling imports nothing');
+
+  env.confirmAnswer = true;
+  input.onchange({ target: { files: [file(v1Backup)] } });
+  await wait(120);
+  assert.strictEqual(env.window.state.view, 'importreport', 'a report follows the import');
+  assert.ok(text(env, '.status-line').includes('2 shows imported'));
+  const skipped = [...env.doc.querySelectorAll('#skipped-list .row')].map(r => r.textContent);
+  assert.strictEqual(skipped.length, 2, 'both left-out shows are listed');
+  assert.ok(skipped[0].startsWith('Severance') && skipped[0].includes('No "Watching on" platform'), 'named, with the reason');
+  assert.ok(skipped[1].startsWith('Fleabag') && skipped[1].includes('older version of V1'), 'old-format entry named, with the reason');
+
+  assert.deepStrictEqual(storedLibrary(env).map(i => i.showId), [501, 251], 'only the importable shows were saved');
+  await wait(80);
+  assert.deepStrictEqual(env.gh.content(env.gistId).library.map(i => i.showId), [501, 251], 'and synced to the gist');
+
+  click(env, 'report-done-btn');
+  await wait(5);
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting1', 'Done0'], 'progress and suspended state came across');
+  console.log('testV1BackupImport passed.');
 }
 
 async function testDisconnect() {
@@ -1078,6 +1136,7 @@ async function testEpisodesLeftOnDetail() {
     await testRateLimit();
     await testInvalidLocalListIsNeverPushed();
     await testBackupAndRestore();
+    await testV1BackupImport();
     await testDisconnect();
     await testV1DataIsIgnored();
     await testDuplicateSpecialsRegression();

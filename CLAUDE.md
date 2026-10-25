@@ -44,7 +44,7 @@ Hard constraints:
 - **C-2** No developer accounts (no Apple Developer Program, no OAuth app registration).
 - **C-3** No shared backend. Each user's data lives in their own gist, with a working copy in the browser.
 - **C-4** Sync via GitHub Gist is **mandatory**. The app cannot be used until a gist is connected.
-- **C-5** V2 **starts fresh**. It does not read, migrate or depend on V1 data (`my-shows-library-v1` in `localStorage`, or V1 backup files). All V2 logic assumes a new user with either an empty gist or a gist written by V2. V2 is totally separate from V1: there is **no migration path**, and users moving from V1 to V2 recreate their shows in V2.
+- **C-5** V2 **starts fresh**. It never reads V1's on-device data (`my-shows-library-v1` in `localStorage`), and V2 never depends on V1. V2 is a separate app; the one way across is the user restoring a **V1 backup file** in V2 (SET-4), one-way, V1 → V2. Shows that can't be imported are left out and listed for the user to add again.
 
 ---
 
@@ -93,7 +93,7 @@ Requirement IDs are stable; reference them in commits and tests.
 - **NAV-7** The **"My Shows" wordmark** in the header is a link that also returns to the main display, behaving identically to **Show**.
 - **NAV-8** Screens below the top level (show detail, sync setup, backup & restore) show a **back arrow** in the header that returns to the previous screen.
 - **NAV-9** Returning to the main display keeps the last-selected segment (see open decision **OD-13**).
-- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.2.0`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
+- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.3.0`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
 
 ### 4.2 Main display (Shows list)
 
@@ -156,7 +156,12 @@ Requirement IDs are stable; reference them in commits and tests.
 ### 4.6 Settings
 
 - **SET-1** Settings lists: **Sync** (status line + entry to the Sync screen), **Backup & restore**, **About / Guide**, **Changelog**.
-- **SET-2** **Backup & restore** moves here from V1's header. Export downloads the V2 library as JSON; import accepts only V2 backup files and replaces the whole library after validation and confirmation. V1 backup files are rejected with a clear message.
+- **SET-2** **Backup & restore** moves here from V1's header. Export downloads the V2 library as JSON. Restore accepts a V2 backup file, or a V1 backup file (SET-4), and replaces the whole library after validation and confirmation.
+- **SET-4** **Restoring a V1 backup file** (a bare JSON array, as V1 downloads):
+  - Works exactly like a V2 restore: after a confirmation it **replaces the whole V2 list**, on every device once it syncs. The confirmation says how many shows will be imported and how many can't be. If the V2 list is empty, the wording is "Import N show(s)…"; otherwise "Replace your list…".
+  - Each entry is copied with only the DATA-2 fields; platform is trimmed; progress, `availableOrder` and suspended state come across. A show listed twice is imported once.
+  - **Not imported** (listed afterwards, with the reason): entries with no "Watching on" platform (required in V2, ADD-7); entries saved by a very old V1 format (`watchedThrough`); entries that are incomplete or damaged. They are never converted or guessed at.
+  - After the import a **V1 import** screen shows `N shows imported` and, under "Not imported — add these again with Add Show", each left-out show by name (looked up on TVmaze; `TVmaze show #id` if that fails) with its reason, then **Go to my shows**.
 - **SET-3** The Sync screen in Settings shows the connection and allows **Sync now**, **Change token** and **Disconnect**.
 
 ### 4.7 Sync and first-run setup (user-facing)
@@ -187,7 +192,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │  ← wordmark = home link (NAV-7)
-│  Version 2.2.0                      │     sync indicator (SYN-5, OD-8); version (VER-1)
+│  Version 2.3.0                      │     sync indicator (SYN-5, OD-8); version (VER-1)
 │  ( 🔍 Search my shows            )  │
 │                                     │
 │ ┌───────────┬───────────┬─────────┐ │
@@ -296,7 +301,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │
-│  Version 2.2.0                      │  ← VER-1
+│  Version 2.3.0                      │  ← VER-1
 │  Add show                           │
 │  Search                             │
 │  ( shogun                        )  │
@@ -573,7 +578,7 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
   8. Event wiring and `init()`
 - **ARC-4** Every function has a short comment stating what it does, its inputs and its outputs. Section headers explain the section's job.
 - **ARC-5** Sync is hooked only at `saveLibrary()` (push), load (pull) and Setup (first connect). No other code path calls the gist client.
-- **ARC-6** No V1 compatibility code: no reading of V1 storage keys, no V1 data transforms, no V1 backup import.
+- **ARC-6** V1 compatibility is limited to SET-4: one pure function (`splitV1Backup`) that splits a V1 backup into importable entries and listed skips. No reading of V1 storage keys and no conversion of old V1 formats.
 - **TST-1** Unit tests cover: status grouping (Watching / Waiting / Done), suspended override, sorting, search across groups, Add placement (ADD-3/ADD-4), last-write-wins decisions, payload wrap/unwrap and validation, identifying the My Shows gist in a gist list, and each first-connect case (SYN-4).
 - **TST-2** Integration tests (jsdom, mocked `fetch` and `localStorage`) cover: Setup shown on first launch and blocking the rest of the app, connect success and each connect error, tab navigation, segment switching and counts, search, both Add actions and toast, suspend/resume, delete, backup/restore in Settings, push on change, pull on load, offline use, token rejected after connect, disconnect, and every failure in §7.3.
 - **TST-3** Fixtures are V2-only: a gist list with no My Shows gist (app creates one), with one valid My Shows gist, with one invalid My Shows gist, and with more than one.
@@ -581,7 +586,7 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
 - **DOC-1** `README.md` opens with a short **"V2 vs V1"** section, before any setup steps, stating:
   - V1 (myshows.fyi, `CyberAdvisor/MyShows`) and V2 (v2.myshows.fyi, `CyberAdvisor/MyShows-v2`) are **totally separate** apps: separate code, separate sites, separate data.
   - V2 is intended for **automatic multi-device sync** through the user's own GitHub Gist, with some UI cleanups.
-  - There is **no migration**: V1 shows do not carry over, and users moving to V2 recreate their list.
+  - Moving from V1 is **one-way, by backup file** (SET-4): shows that can't come across are listed so the user can add them again.
   - V1 continues to work unchanged.
 - **DOC-2** The "V2 vs V1" section includes a short comparison table:
 
@@ -593,7 +598,7 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
   | Requires | Nothing | GitHub account and a classic token with `gist` scope |
   | Main display | V1 groups | Watching / Waiting / Done with counts; Waiting split into "Waiting for next episode or season" and "Suspended" |
   | Navigation | Header icons | Bottom tool bar: Show / Add Show / Settings |
-  | Moving data between them | — | Not supported |
+  | Moving data between them | Download a backup file | Restore a V1 backup file in V2 (one-way, V1 → V2) |
 
 - **DOC-3** The rest of the README covers: token creation steps (linked from Setup, SYN-2), what the "My Shows V2" gist is and not to delete it (U-16), how to remove unwanted My Shows gists (U-17), and the security and privacy points in GST-14 and GST-15.
 
@@ -646,7 +651,7 @@ Items in the current design that could confuse users, to resolve or accept expli
 - **U-13 Setup is a barrier to entry.** Every new user still needs a GitHub account and a classic token before seeing anything. The app creating the gist removes the gist steps, but token creation in GitHub's developer settings remains the hardest step for non-technical users.
 - **U-17 Leftover gists.** Start a new gist and the picker both leave unused My Shows gists in the user's account. Each later connect on a new device shows the picker again (if more than one is valid). The picker's show count and date are the only way to tell them apart; the README should explain how to delete an unwanted one on GitHub.
 - **U-16 A My Shows gist appears in the user's GitHub account.** Users who browse their gists will see a secret gist named "My Shows V2". Deleting it there removes their data from every device. The README should say what it is and not to delete it.
-- **U-14 Existing V1 users (accepted).** V1 users moving to V2 must re-add every show and re-mark watched episodes. V1 keeps running at myshows.fyi, so no one loses access to their V1 list. Nothing in V1 tells users V2 exists, and nothing in V2 explains that V1 data doesn't carry over; the V2 guide should say so.
+- **U-14 Existing V1 users.** A V1 backup file brings a V1 list across (SET-4); only shows without a platform or in a very old V1 format need re-adding, and the import screen lists them. Nothing in V1 tells users V2 exists. A V1 restore replaces the V2 list, like any restore, so restoring V1 over a V2 list already in use loses the V2 changes on every device.
 - **U-18 Testing in production.** Anyone who finds v2.myshows.fyi sees work in progress, and a bad push affects real V2 users' sync immediately. A pushed bug that writes a malformed library could overwrite a user's gist (GST-12 only protects reads), so the payload validation should also run before every push.
 - **U-15 Disconnect wipes this device.** Users may expect Disconnect to leave their list visible. The confirmation must say the list stays in the gist and will be reloaded on reconnect.
 
@@ -658,7 +663,7 @@ Items in the current design that could confuse users, to resolve or accept expli
 - Any change to V1 show rows or the V1 show detail screen beyond what §4 states.
 - Archive, trash or undo for deleted shows.
 - Using the app without a gist (local-only mode).
-- Any migration from V1: no reading of V1 `localStorage` data and no import of V1 backup files.
+- Any V1 migration beyond SET-4: no reading of V1 `localStorage` data, no automatic copying, no conversion of old V1 formats, nothing from V2 back to V1.
 - PWA install (manifest, service worker) — can be added later; independent of sync.
 - Separate iPhone vs iPad/Mac layouts (e.g., side-by-side list and detail).
 - Per-show merge or real-time conflict resolution.
@@ -686,3 +691,4 @@ Items in the current design that could confuse users, to resolve or accept expli
 | 2026-10-25 | Version 2.1.0: Watching on required (ADD-7); "Where are you up to?" with Caught up / Not started / Partway, Caught up default (ADD-8, DATA-2 `pendingCaughtUp`); version line under the wordmark (VER-1); larger 5 s toast, row highlight and explicit load-failure message (ADD-5); add error clears on typing and platform placeholder made unambiguous (ADD-7); U-19 added. |
 | 2026-10-25 | Version 2.1.1: ADD-8 choices renamed and reordered to Starting / Season/Episode last watched / Caught Up (Caught Up still the default). |
 | 2026-10-25 | Version 2.2.0: Previous / Next episode buttons on the detail screen change the user's progress (DET-6); DET-1 updated to include them. |
+| 2026-10-25 | Version 2.3.0: V1 backup files can be restored into V2 (SET-4), replacing the list after confirmation like any restore; shows without a platform or in a very old V1 format are left out and listed with the reason. C-5, SET-2, ARC-6, DOC-1/2, U-14 and §12 updated. |

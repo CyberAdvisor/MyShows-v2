@@ -9,7 +9,7 @@ Hosted at **https://v2.myshows.fyi**
 **V1 and V2 are totally separate apps.** They have separate code, separate websites, and separate data.
 
 - **V2 is for automatic multi-device sync.** Your list is kept in your own GitHub Gist, so your iPhone, iPad and Mac all show the same list without any manual backup files. V2 also has some UI cleanups.
-- **There is no migration.** Shows in V1 do not carry over to V2. If you move to V2, you add your shows again.
+- **Moving from V1 is one-way, by backup file.** Download a backup in V1, then restore it in V2 (Settings › Backup & restore). Shows that can't come across — ones with no "Watching on" platform (required in V2), or saved by a much older version of V1 — are left out and listed with the reason so you can add them again. Nothing is copied automatically, and nothing ever goes from V2 back to V1.
 - **V1 keeps working, unchanged**, at https://myshows.fyi.
 
 | | V1 | V2 |
@@ -21,7 +21,7 @@ Hosted at **https://v2.myshows.fyi**
 | Requires | Nothing | A free GitHub account and a classic token with the `gist` scope |
 | Main screen | Available now / Upcoming / Pending return / Completed | Watching / Waiting / Done, with a count on each; Waiting is split into "Waiting for next episode or season" and "Suspended" |
 | Navigation | Header icons | Bottom tool bar: Show / Add Show / Settings |
-| Moving a list between them | — | Not supported |
+| Moving a list between them | Download a backup file | Restore a V1 backup file in Settings › Backup & restore (one-way, V1 → V2) |
 
 ## What it does
 
@@ -87,7 +87,7 @@ Your list is already stored in your gist, so backups are optional. In **Settings
 
 - **Download backup file** — saves a `.json` copy of your whole list. On iPhone this opens Safari's file preview; tap **More...** → **Save to Files**.
 - **Choose backup file** — replaces your whole list with the one in the file, after a confirmation. Because the list syncs, the replacement reaches all your devices.
-- Only **V2** backup files can be restored. V1 backup files are rejected.
+- **V1 backup files** can be restored too. As with any restore, the V1 shows replace your whole V2 list after you confirm. Shows that can't come across (ones with no "Watching on" platform (required in V2), or saved by a much older version of V1) are left out and listed afterwards, with the reason, so you can add them again.
 
 ## Disconnecting a device
 
