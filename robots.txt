@@ -1,0 +1,5 @@
+# v2.myshows.fyi: all pages may be indexed. The sitemap lists them.
+User-agent: *
+Allow: /
+
+Sitemap: https://v2.myshows.fyi/sitemap.xml

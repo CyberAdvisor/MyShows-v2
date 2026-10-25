@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Pages on v2.myshows.fyi for search engines. Referenced from robots.txt.
+     Update <lastmod> when a page changes, and add any new page here (AGENTS.md). -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://v2.myshows.fyi/</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://v2.myshows.fyi/guide/</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+  <url>
+    <loc>https://v2.myshows.fyi/changelog/</loc>
+    <lastmod>2026-10-25</lastmod>
+  </url>
+</urlset>

@@ -93,7 +93,7 @@ Requirement IDs are stable; reference them in commits and tests.
 - **NAV-7** The **"My Shows" wordmark** in the header is a link that also returns to the main display, behaving identically to **Show**.
 - **NAV-8** Screens below the top level (show detail, sync setup, backup & restore) show a **back arrow** in the header that returns to the previous screen.
 - **NAV-9** Returning to the main display keeps the last-selected segment (see open decision **OD-13**).
-- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.6.2`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
+- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.6.3`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
 
 ### 4.2 Main display (Shows list)
 
@@ -197,7 +197,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │  ← wordmark = home link (NAV-7)
-│  Version 2.6.2                      │     sync indicator (SYN-5, OD-8); version (VER-1)
+│  Version 2.6.3                      │     sync indicator (SYN-5, OD-8); version (VER-1)
 │  ( 🔍 Search my shows            )  │
 │                                     │
 │ ┌───────────┬───────────┬─────────┐ │
@@ -308,7 +308,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │
-│  Version 2.6.2                      │  ← VER-1
+│  Version 2.6.3                      │  ← VER-1
 │  Add show                           │
 │  Search                             │
 │  ( shogun                        )  │
@@ -572,7 +572,7 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
 
 ## 8. Architecture, code structure and testing
 
-- **ARC-1** Single shipped file: `index.html` at the repository root (HTML + CSS + one main inline `<script>`). No build step, no framework. Other repository files: `CNAME`, `README.md`, `AGENTS.md`, `CLAUDE.md`, the test files, `guide/`, `changelog/` and `screenshots/` (images used by the README only; the app never loads them).
+- **ARC-1** Single shipped file: `index.html` at the repository root (HTML + CSS + one main inline `<script>`). No build step, no framework. Other repository files: `CNAME`, `README.md`, `AGENTS.md`, `CLAUDE.md`, the test files, `guide/`, `changelog/`, `screenshots/` (images used by the README only; the app never loads them), and `sitemap.xml` and `robots.txt` (DEP-8).
 - **ARC-2** **One source of logic.** The pure functions live only inside the main inline script in `index.html`. There is no separate `logic.js`. Tests extract logic from `index.html`. V1 code may be copied in as a starting point, but nothing from V1 is kept unless this document requires it.
 - **ARC-3** The inline script is organized in clearly commented sections, in this order:
   1. Constants and storage keys
@@ -620,6 +620,7 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
 - **DEP-5** **Testing is done in production** at v2.myshows.fyi. There is no separate test site. All automated tests (TST-4) must pass before anything is pushed to `main`.
 - **DEP-6** Manual testing uses a dedicated test GitHub token, not the owner's everyday one, on real iPhone and iPad (Safari) and Mac Safari.
 - **DEP-7** Because v2.myshows.fyi is a different origin from myshows.fyi, V1 and V2 `localStorage` are fully separate. V1 users are unaffected unless they choose to go to v2.myshows.fyi.
+- **DEP-8** `sitemap.xml` lists the site's three pages (`/`, `/guide/`, `/changelog/`) with a `lastmod` date each; `robots.txt` allows all crawling and points to it. Add any new page to the sitemap and update `lastmod` when a page changes. Every page in the sitemap has a `<meta name="description">` of 160 characters or fewer for search results. The sitemap is submitted in Google Search Console by the owner. More discoverability means more visitors may see work in progress (U-18).
 
 ---
 
@@ -705,3 +706,5 @@ Items in the current design that could confuse users, to resolve or accept expli
 | 2026-10-25 | Version 2.6.1: V1's "About My Shows & how to use" guide link added under the main display (LIST-15); mockup 5.1 updated. |
 | 2026-10-25 | README: screenshots of the Watching list and a show's detail screen added under "What it does" (`screenshots/`, ARC-1). No app change. |
 | 2026-10-25 | Version 2.6.2: LIST-15 corrected — the main display link opens the README on GitHub in a new tab (as V1), not the guide. |
+| 2026-10-25 | `sitemap.xml` and `robots.txt` added for search engines (DEP-8, ARC-1). No app change. |
+| 2026-10-25 | Version 2.6.3: search-result description added to the main page; DEP-8 requires one on every sitemap page. |

@@ -557,4 +557,26 @@ const TODAY = '2026-07-12';
   assert.strictEqual(formatSyncTime('2026-10-25T11:55:00.000Z', now), '5 min ago');
 }
 
+// --- sitemap.xml and robots.txt (search engines) ---
+{
+  const fs = require('fs');
+  const path = require('path');
+  const sitemap = fs.readFileSync(path.join(__dirname, 'sitemap.xml'), 'utf8');
+  const locs = [...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(m => m[1]);
+  assert.deepStrictEqual(locs, ['https://v2.myshows.fyi/', 'https://v2.myshows.fyi/guide/', 'https://v2.myshows.fyi/changelog/'],
+    'sitemap lists the app, the guide and the changelog');
+  locs.forEach(url => {
+    const file = path.join(__dirname, url.replace('https://v2.myshows.fyi/', ''), 'index.html');
+    assert.ok(fs.existsSync(file), 'sitemap page exists: ' + url);
+    const desc = fs.readFileSync(file, 'utf8').match(/<meta name="description" content="([^"]+)"/);
+    assert.ok(desc && desc[1].length <= 160, 'search-result description (160 characters max) on ' + url);
+  });
+  assert.strictEqual((sitemap.match(/<url>/g) || []).length, (sitemap.match(/<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/g) || []).length,
+    'every page has a lastmod date');
+  const host = fs.readFileSync(path.join(__dirname, 'CNAME'), 'utf8').trim();
+  assert.ok(locs.every(u => u.startsWith('https://' + host + '/')), 'sitemap uses the CNAME host');
+  const robots = fs.readFileSync(path.join(__dirname, 'robots.txt'), 'utf8');
+  assert.ok(robots.includes('Sitemap: https://' + host + '/sitemap.xml'), 'robots.txt points to the sitemap');
+}
+
 console.log('All logic tests passed.');

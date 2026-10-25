@@ -113,6 +113,8 @@ This needs to run from a real `https://` web address — iOS Safari blocks netwo
 3. Go to **Settings → Pages**, set Source to **Deploy from a branch**, branch `main`, folder `/ (root)`, and save.
 4. After a minute or so, open the URL GitHub gives you on your phone, then use Safari's **Share → Add to Home Screen**.
 
+If you host a copy under your own address, change the addresses in `sitemap.xml` and `robots.txt` to yours, or delete those two files.
+
 A self-hosted copy is a different web address, so it has its own device copy and needs connecting with your token once — your gist is the same either way.
 
 ## Testing
