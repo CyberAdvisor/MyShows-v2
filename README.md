@@ -25,6 +25,13 @@ Hosted at **https://v2.myshows.fyi**
 
 ## What it does
 
+<p align="center">
+  <img src="screenshots/watching.png" width="280" valign="top" alt="The Watching list, split into currently running shows and ended shows being binged">
+  &nbsp;&nbsp;
+  <img src="screenshots/show-detail.png" width="280" valign="top" alt="A show's detail screen with the next episode, where you're watching it, and Mark watched">
+</p>
+<p align="center"><em>Your shows, split into what's on now and what you're binging &nbsp;·&nbsp; Every episode, with where you're up to</em></p>
+
 - **Add a show** by searching (data comes from [TVmaze](https://www.tvmaze.com), a free public TV database — no TVmaze account or API key needed)
 - **Say where you're up to** when you add a show: **Starting**, **Season/Episode last watched** (enter the season and episode), or **Caught Up** (the default — every aired episode is marked watched, handy for shows you're waiting on to return). The app figures out what's next and puts the show in the right group automatically, highlights it there, and confirms where it went
 - **Note where you're watching it** (Hulu, Netflix, whatever) — required when adding; shown next to the show name and on the episode detail screen

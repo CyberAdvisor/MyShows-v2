@@ -572,7 +572,7 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
 
 ## 8. Architecture, code structure and testing
 
-- **ARC-1** Single shipped file: `index.html` at the repository root (HTML + CSS + one main inline `<script>`). No build step, no framework. Other repository files: `CNAME`, `README.md`, `AGENTS.md`, `CLAUDE.md`, the test files, `guide/` and `changelog/`.
+- **ARC-1** Single shipped file: `index.html` at the repository root (HTML + CSS + one main inline `<script>`). No build step, no framework. Other repository files: `CNAME`, `README.md`, `AGENTS.md`, `CLAUDE.md`, the test files, `guide/`, `changelog/` and `screenshots/` (images used by the README only; the app never loads them).
 - **ARC-2** **One source of logic.** The pure functions live only inside the main inline script in `index.html`. There is no separate `logic.js`. Tests extract logic from `index.html`. V1 code may be copied in as a starting point, but nothing from V1 is kept unless this document requires it.
 - **ARC-3** The inline script is organized in clearly commented sections, in this order:
   1. Constants and storage keys
@@ -703,3 +703,4 @@ Items in the current design that could confuse users, to resolve or accept expli
 | 2026-10-25 | Version 2.5.0: Watching order (LIST-14) changed to current shows first, newest released episode first, then ended shows in V1 sink order. Replaces the 2.4.0 one-waiting / several-waiting tiers. |
 | 2026-10-25 | Version 2.6.0: Watching split into two headed sections, "Currently running shows" and "Ended shows I'm binging" (LIST-14), by TVmaze status; order within each unchanged from 2.5.0; mockup 5.1 updated. |
 | 2026-10-25 | Version 2.6.1: V1's "About My Shows & how to use" guide link added under the main display (LIST-15); mockup 5.1 updated. |
+| 2026-10-25 | README: screenshots of the Watching list and a show's detail screen added under "What it does" (`screenshots/`, ARC-1). No app change. |
