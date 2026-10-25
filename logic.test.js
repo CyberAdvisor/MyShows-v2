@@ -24,7 +24,8 @@ const {
   episodesLeftInSeason, seasonsRemaining, withArchiveOverride, buildArchiveSnapshot,
   segmentForStatus, displaySegment, groupTagLabel, buildSegments, segmentCounts, searchEntries,
   isValidLibraryItem, isValidLibrary, wrapPayload, isValidPayload, parsePayloadText,
-  decideSync, nextTimestamp, findCandidateGistIds, classifyCandidates, describeSyncError, formatSyncTime
+  decideSync, nextTimestamp, findCandidateGistIds, classifyCandidates, describeSyncError, formatSyncTime,
+  lastAiredEpisodeId, APP_VERSION, stepWatchedEpisode
 } = L;
 
 const TODAY = '2026-07-12';
@@ -334,6 +335,60 @@ const TODAY = '2026-07-12';
   assert.deepStrictEqual(segmentCounts(seg), { watching: 2, waiting: 6, done: 2 }, 'Waiting count includes Suspended (OD-16)');
 }
 
+// =====================================================================
+// V2: "Caught up" when adding (ADD-8)
+// =====================================================================
+
+{
+  const episodes = sortedEpisodes([
+    { id: 1, season: 1, number: 1, airdate: '2026-06-01' },
+    { id: 2, season: 1, number: null, airdate: '2026-07-01', name: 'Special' },
+    { id: 3, season: 2, number: 1, airdate: '2026-09-01' },
+    { id: 4, season: 2, number: 2, airdate: '' }
+  ]);
+  assert.strictEqual(lastAiredEpisodeId(episodes, TODAY), 2, 'last aired episode, specials included');
+  assert.strictEqual(lastAiredEpisodeId(episodes, '2026-07-01'), 2, 'an episode airing today counts as aired');
+  assert.strictEqual(lastAiredEpisodeId(episodes, '2026-05-01'), null, 'nothing aired yet -> null (not started)');
+  assert.strictEqual(lastAiredEpisodeId([], TODAY), null, 'no episodes -> null');
+
+  // Placement that follows from caught up (ADD-3, ADD-4).
+  const running = computeShowStatus({ status: 'Running' }, episodes, lastAiredEpisodeId(episodes, TODAY), TODAY);
+  assert.strictEqual(segmentForStatus(running), 'waiting', 'caught up on a running show with a dated next episode -> Waiting');
+  const noReturnDate = sortedEpisodes([{ id: 1, season: 1, number: 1, airdate: '2024-02-27' }, { id: 2, season: 1, number: 2, airdate: '2024-03-05' }]);
+  const pending = computeShowStatus({ status: 'Running' }, noReturnDate, lastAiredEpisodeId(noReturnDate, TODAY), TODAY);
+  assert.strictEqual(pending.group, 'pending', 'caught up, renewed, no date -> pending return');
+  assert.strictEqual(segmentForStatus(pending), 'waiting');
+  const ended = computeShowStatus({ status: 'Ended' }, noReturnDate, lastAiredEpisodeId(noReturnDate, TODAY), TODAY);
+  assert.strictEqual(segmentForStatus(ended), 'done', 'caught up on an ended show -> Done');
+  const unaired = computeShowStatus({ status: 'In Development' }, [{ id: 9, season: 1, number: 1, airdate: '2027-01-01' }], null, TODAY);
+  assert.strictEqual(segmentForStatus(unaired), 'waiting', 'nothing aired yet -> Waiting, never Watching');
+}
+
+// --- DET-6: Previous / Next episode ---
+{
+  const eps = sortedEpisodes([
+    { id: 1, season: 1, number: 1, airdate: '2026-01-01' },
+    { id: 2, season: 1, number: null, airdate: '2026-01-05', name: 'Special' },
+    { id: 3, season: 1, number: 2, airdate: '2026-01-08' }
+  ]);
+  assert.strictEqual(stepWatchedEpisode(eps, null, -1), undefined, 'nothing watched: cannot go back');
+  assert.strictEqual(stepWatchedEpisode(eps, null, 1), 1, 'nothing watched: next marks the first episode');
+  assert.strictEqual(stepWatchedEpisode(eps, 1, -1), null, 'back from the first episode: nothing watched');
+  assert.strictEqual(stepWatchedEpisode(eps, 3, -1), 2, 'back steps over specials in air-date order too');
+  assert.strictEqual(stepWatchedEpisode(eps, 1, 1), 2, 'next skips one episode, specials included');
+  assert.strictEqual(stepWatchedEpisode(eps, 3, 1), undefined, 'last episode: no next');
+  assert.strictEqual(stepWatchedEpisode(eps, 999, -1), undefined, 'unknown watched id: cannot go back');
+}
+
+// --- VER-1: version constant ---
+{
+  assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/, 'APP_VERSION is a semantic version');
+  const changelog = require('fs').readFileSync(require('path').join(__dirname, 'changelog', 'index.html'), 'utf8');
+  const newest = changelog.match(/class="entry-date">[^<]*<span class="tag">Version ([\d.]+)/);
+  assert.ok(newest, 'changelog entries are tagged with a version');
+  assert.strictEqual(newest[1], APP_VERSION, 'APP_VERSION matches the newest changelog entry');
+}
+
 // --- searchEntries (SRCH-2, SRCH-3) ---
 {
   const entries = [
@@ -360,6 +415,8 @@ const TODAY = '2026-07-12';
   assert.ok(!isValidLibraryItem({ showId: 1, watchedEpisodeId: 'x' }), 'non-numeric watchedEpisodeId rejected');
   assert.ok(!isValidLibraryItem({ showId: 1, archived: 'yes' }), 'non-boolean archived rejected');
   assert.ok(!isValidLibraryItem({ showId: 1, pendingSeasonNumber: { season: 1 } }), 'incomplete pendingSeasonNumber rejected');
+  assert.ok(isValidLibraryItem({ showId: 1, pendingCaughtUp: true }), 'transient caught-up marker allowed');
+  assert.ok(!isValidLibraryItem({ showId: 1, pendingCaughtUp: 'yes' }), 'non-boolean caught-up marker rejected');
   assert.ok(!isValidLibraryItem(null) && !isValidLibraryItem([]), 'non-objects rejected');
 
   assert.ok(isValidLibrary([]), 'empty library is valid');

@@ -26,8 +26,8 @@ Hosted at **https://v2.myshows.fyi**
 ## What it does
 
 - **Add a show** by searching (data comes from [TVmaze](https://www.tvmaze.com), a free public TV database — no TVmaze account or API key needed)
-- **Track your progress** by entering the last episode you watched; the app figures out what's next and puts the show in the right group automatically
-- **Note where you're watching it** (Hulu, Netflix, whatever) — shown next to the show name and on the episode detail screen
+- **Say where you're up to** when you add a show: **Starting**, **Season/Episode last watched** (enter the season and episode), or **Caught Up** (the default — every aired episode is marked watched, handy for shows you're waiting on to return). The app figures out what's next and puts the show in the right group automatically, highlights it there, and confirms where it went
+- **Note where you're watching it** (Hulu, Netflix, whatever) — required when adding; shown next to the show name and on the episode detail screen
 - **Three groups**, each with a count:
   - **Watching** — the next episode has already aired
   - **Waiting** — you're caught up and the show is still in production (with a countdown when the next air date is known), plus a separate **Suspended** section for shows you've paused
@@ -35,8 +35,11 @@ Hosted at **https://v2.myshows.fyi**
 - **Search your list** from the top of the main screen; results cover all three groups and show which group each show is in
 - **Includes specials** (Christmas specials, series finales tagged as specials, etc.) in their correct place in the timeline, based on air date
 - **One tap to mark watched**, which then shows the next episode
+- **Previous / Next episode** on a show's detail screen move where you're up to back one episode (to undo an accidental "Mark watched") or forward one (to skip an episode)
 - **Suspend a series without deleting it** — from the detail screen, tap "Suspend series" to move a show into Waiting › Suspended, with your last watched episode and the date recorded. Tap "Reactivate" to pick back up exactly where you left off
 - **Syncs automatically** — every change is saved on your device immediately and sent to your gist about two seconds later. When you open the app on another device, it picks up the latest list
+
+The version number is shown under "My Shows" on every screen; tap it to see the changelog.
 
 ## Getting started
 

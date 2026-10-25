@@ -232,6 +232,13 @@
     font-weight: 600;
     color: var(--text);
   }
+  .version-link {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin: -2px 0 0;
+  }
   .sync-ind {
     border: 1px solid var(--border);
     background: var(--surface);
@@ -354,13 +361,28 @@
     margin: 0 auto;
     background: var(--text);
     color: var(--bg);
-    border-radius: 10px;
-    padding: 12px 14px;
-    font-size: 14px;
+    border-radius: 12px;
+    padding: 16px 18px;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.4;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
     z-index: 20;
     display: none;
   }
   #toast.show { display: block; }
+
+  /* --- ADD-5: the newly added show's row is highlighted --- */
+  .row.just-added { background: var(--accent-bg); box-shadow: inset 4px 0 0 var(--accent); }
+
+  /* --- ADD-8: "Where are you up to?" --- */
+  .progress-choice { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; font-size: 15px; }
+  .progress-choice input { margin-top: 3px; }
+  .partway-fields { margin: 4px 0 0 26px; }
+
+  /* --- DET-6: Previous / Next episode --- */
+  .step-row { display: flex; gap: 10px; margin-top: 14px; }
+  .step-row button { flex: 1; }
 </style>
 <!-- Default Statcounter code for MyShows V2
 https://v2.myshows.fyi
@@ -419,6 +441,8 @@ var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
 var TVMAZE_API = 'https://api.tvmaze.com';
 var GITHUB_API = 'https://api.github.com';
 var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
+var APP_VERSION = '2.2.0';                   // VER-1: must match the newest changelog entry
+var CONFIRM_MS = 5000;                       // ADD-5: how long the add confirmation shows
 
 // === PURE LOGIC START ===
 // ---------------------------------------------------------------------
@@ -492,6 +516,30 @@ function computeShowStatus(show, episodes, watchedEpisodeId, today) {
     (new Date(nextEpisode.airdate + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000
   );
   return { group: 'upcoming', nextEpisode: nextEpisode, daysUntil: daysUntil };
+}
+
+// "Caught up" (ADD-8): id of the last episode, specials included, that has
+// aired by `today` in a sorted list, or null when nothing has aired yet.
+function lastAiredEpisodeId(episodes, today) {
+  today = today || new Date().toISOString().slice(0, 10);
+  var id = null;
+  episodes.forEach(function (e) {
+    if (e.airdate && e.airdate <= today) id = e.id;
+  });
+  return id;
+}
+
+// DET-6: the watchedEpisodeId after moving one episode back (-1) or
+// forward (+1). Returns undefined when the move isn't possible (nothing
+// watched to go back from, or no further episode to skip to). Moving back
+// from the first episode returns null (nothing watched).
+function stepWatchedEpisode(episodes, watchedEpisodeId, direction) {
+  var idx = findWatchedIndex(episodes, watchedEpisodeId);
+  if (direction < 0) {
+    if (idx < 0) return undefined;
+    return idx === 0 ? null : episodes[idx - 1].id;
+  }
+  return idx + 1 < episodes.length ? episodes[idx + 1].id : undefined;
 }
 
 // Value that places an item at the TOP of Watching (lower = higher up).
@@ -645,6 +693,7 @@ function isValidLibraryItem(item) {
   if (item.watchedEpisodeId !== undefined && item.watchedEpisodeId !== null && typeof item.watchedEpisodeId !== 'number') return false;
   if (item.availableOrder !== undefined && typeof item.availableOrder !== 'number') return false;
   if (item.archived !== undefined && typeof item.archived !== 'boolean') return false;
+  if (item.pendingCaughtUp !== undefined && typeof item.pendingCaughtUp !== 'boolean') return false;
   if (item.pendingSeasonNumber !== undefined && item.pendingSeasonNumber !== null) {
     var p = item.pendingSeasonNumber;
     if (!isPlainObject(p) || typeof p.season !== 'number' || typeof p.number !== 'number') return false;
@@ -1114,6 +1163,7 @@ var state = {
   computed: {},     // showId -> { show, episodes, status }
   segment: 'watching',
   listQuery: '',
+  justAddedShowId: null, // ADD-5: row highlighted after adding
   addFlow: null,
   detailShowId: null,
   errorBanner: '',
@@ -1162,10 +1212,16 @@ function syncIndicatorHtml() {
     SYNC_LABELS[sync.status] + '</button>';
 }
 
+// "Version 2.2.0" under the wordmark, linking to the changelog (VER-1).
+function versionLineHtml() {
+  return '<a class="version-link" id="version-link" href="changelog/">Version ' + APP_VERSION + '</a>';
+}
+
 // Header on every connected screen: "My Shows" wordmark (home link, NAV-7)
-// and the always-visible sync indicator (OD-8).
+// with the version below it, and the always-visible sync indicator (OD-8).
 function appHeaderHtml() {
-  return '<div class="app-header"><button class="wordmark" id="home-link">My Shows</button>' + syncIndicatorHtml() + '</div>';
+  return '<div class="app-header"><div><button class="wordmark" id="home-link">My Shows</button>' + versionLineHtml() + '</div>' +
+    syncIndicatorHtml() + '</div>';
 }
 
 // Title row; sub-screens get a back arrow (NAV-8).
@@ -1224,7 +1280,7 @@ function showToast(message) {
   el.textContent = '✓ ' + message;
   el.className = 'show';
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(function () { el.className = ''; }, 3000);
+  toastTimer = setTimeout(function () { el.className = ''; }, CONFIRM_MS);
 }
 
 function renderLoading() {
@@ -1235,7 +1291,7 @@ function renderLoading() {
 
 function renderSetup() {
   var su = state.setup;
-  var html = '<div class="app-header"><span class="wordmark">My Shows</span></div>';
+  var html = '<div class="app-header"><div><span class="wordmark">My Shows</span>' + versionLineHtml() + '</div></div>';
 
   if (su.choices) {
     html += screenTitleHtml('Choose your list', false);
@@ -1486,7 +1542,8 @@ function renderRow(e, tag) {
     right = '<button class="text" id="reactivate-' + item.showId + '">Reactivate</button>';
   }
 
-  return '<div class="row" id="row-' + item.showId + '">' +
+  var rowClass = item.showId === state.justAddedShowId ? 'row just-added' : 'row';
+  return '<div class="' + rowClass + '" id="row-' + item.showId + '">' +
     '<div>' + titleHtml + '<p class="row-sub">' + subText + '</p></div>' +
     '<div class="row-right">' + right + '</div>' +
     '</div>';
@@ -1563,6 +1620,16 @@ function renderDetail() {
     html += '</table>';
   }
 
+  // DET-6: move your place back or forward one episode (not while suspended).
+  if (!status.archived && c.episodes.length) {
+    var canBack = stepWatchedEpisode(c.episodes, item.watchedEpisodeId, -1) !== undefined;
+    var canNext = stepWatchedEpisode(c.episodes, item.watchedEpisodeId, 1) !== undefined;
+    html += '<div class="step-row">' +
+      '<button id="prev-episode-btn"' + (canBack ? '' : ' disabled') + '>\u2039 Previous episode</button>' +
+      '<button id="next-episode-btn"' + (canNext ? '' : ' disabled') + '>Next episode \u203A</button></div>';
+    html += '<p class="hint" style="text-align:center;">Moves where you\u2019re up to back or forward one episode.</p>';
+  }
+
   html += '<p style="margin-top:24px; text-align:center;">';
   if (status.archived) {
     html += '<a href="#" class="text-link" id="reactivate-link">Reactivate series</a>';
@@ -1575,6 +1642,10 @@ function renderDetail() {
   bindChrome(openList);
   var markBtn = document.getElementById('mark-watched-btn');
   if (markBtn) markBtn.onclick = function () { markWatched(item.showId, true); };
+  var prevBtn = document.getElementById('prev-episode-btn');
+  if (prevBtn) prevBtn.onclick = function () { stepEpisode(item.showId, -1); };
+  var nextBtn = document.getElementById('next-episode-btn');
+  if (nextBtn) nextBtn.onclick = function () { stepEpisode(item.showId, 1); };
   document.getElementById('remove-link').onclick = function (ev) { ev.preventDefault(); removeShow(item.showId); };
   var endLink = document.getElementById('end-series-link');
   if (endLink) endLink.onclick = function (ev) { ev.preventDefault(); endSeries(item.showId); };
@@ -1585,7 +1656,7 @@ function renderDetail() {
 // --- Add Show (ADD: V1 form, auto placement) --------------------------------
 
 function freshAddFlow() {
-  return { query: '', results: [], selected: null, platform: '', season: '', episode: '', error: '', searchStatus: 'idle', searchError: '', busy: false };
+  return { query: '', results: [], selected: null, platform: '', progress: 'caughtup', season: '', episode: '', error: '', searchStatus: 'idle', searchError: '', busy: false };
 }
 
 // "In Watching" etc. for a search result already in the library (ADD-6).
@@ -1679,56 +1750,75 @@ function renderAdd() {
   renderAddForm();
 }
 
-// Platform, last-watched and the Add button for the selected result.
+// ADD-8 choices, in the order shown. Caught Up is the default (freshAddFlow).
+var PROGRESS_CHOICES = [
+  { value: 'starting', label: 'Starting' },
+  { value: 'lastwatched', label: 'Season/Episode last watched' },
+  { value: 'caughtup', label: 'Caught Up' }
+];
+
+// Platform (required, ADD-7), "Where are you up to?" (ADD-8) and the Add
+// button for the selected result. Season/Episode fields show only for that choice.
 function renderAddForm() {
   var af = state.addFlow;
   var form = document.getElementById('add-form');
   if (!form) return;
   if (!af.selected) { form.innerHTML = ''; return; }
   var html = '<div class="field" style="margin-top:16px;">';
-  html += '<p class="field-label">Watching on</p>';
-  html += '<input type="text" id="platform-input" placeholder="Hulu" value="' + escapeHtml(af.platform) + '" />';
+  html += '<p class="field-label">Watching on (required)</p>';
+  html += '<input type="text" id="platform-input" placeholder="e.g. Hulu, Netflix" value="' + escapeHtml(af.platform) + '" />';
   html += '</div>';
-  html += '<p class="field-label">Last episode watched</p>';
-  html += '<div class="field-row">';
-  html += '<div class="field"><p class="hint" style="margin:0 0 4px;">Season</p><input type="number" id="season-input" min="0" value="' + escapeHtml(af.season) + '" /></div>';
-  html += '<div class="field"><p class="hint" style="margin:0 0 4px;">Episode</p><input type="number" id="episode-input" min="0" value="' + escapeHtml(af.episode) + '" /></div>';
+  html += '<p class="field-label">Where are you up to?</p><div class="field">';
+  PROGRESS_CHOICES.forEach(function (c) {
+    html += '<label class="progress-choice"><input type="radio" name="progress" value="' + c.value + '"' + (af.progress === c.value ? ' checked' : '') + ' /><span>' + c.label + '</span></label>';
+    // Season/Episode sit directly under their own choice, only when it's picked.
+    if (c.value === 'lastwatched' && af.progress === 'lastwatched') {
+      html += '<div class="field-row partway-fields">';
+      html += '<div class="field"><p class="hint" style="margin:0 0 4px;">Season</p><input type="number" id="season-input" min="0" value="' + escapeHtml(af.season) + '" /></div>';
+      html += '<div class="field"><p class="hint" style="margin:0 0 4px;">Episode</p><input type="number" id="episode-input" min="0" value="' + escapeHtml(af.episode) + '" /></div>';
+      html += '</div>';
+    }
+  });
   html += '</div>';
-  html += '<p class="hint" style="margin-bottom:16px;">Leave blank if you have not started.</p>';
-  if (af.error) html += '<p class="error-text" style="margin-bottom:10px;">' + escapeHtml(af.error) + '</p>';
+  if (af.error) html += '<p class="error-text" id="add-error" style="margin-bottom:10px;">' + escapeHtml(af.error) + '</p>';
   html += '<button class="primary" id="submit-add-btn"' + (af.busy ? ' disabled' : '') + '>' + (af.busy ? 'Adding…' : 'Add show') + '</button>';
   form.innerHTML = html;
 
-  document.getElementById('platform-input').oninput = function (e) { af.platform = e.target.value; };
-  document.getElementById('season-input').oninput = function (e) { af.season = e.target.value; };
-  document.getElementById('episode-input').oninput = function (e) { af.episode = e.target.value; };
+  document.getElementById('platform-input').oninput = function (e) { af.platform = e.target.value; clearAddError(); };
+  form.querySelectorAll('input[name="progress"]').forEach(function (r) {
+    r.onchange = function () { af.progress = r.value; af.error = ''; renderAddForm(); };
+  });
+  var season = document.getElementById('season-input');
+  if (season) season.oninput = function (e) { af.season = e.target.value; clearAddError(); };
+  var episode = document.getElementById('episode-input');
+  if (episode) episode.oninput = function (e) { af.episode = e.target.value; clearAddError(); };
   document.getElementById('submit-add-btn').onclick = submitAddShow;
+}
+
+// Removes the add-form error once the user starts fixing it, without
+// re-rendering (that would replace the input and drop focus on iOS).
+function clearAddError() {
+  state.addFlow.error = '';
+  var el = document.getElementById('add-error');
+  if (el) el.parentNode.removeChild(el);
+}
+
+// Checks the add form; returns an error message, or '' when it can be added.
+function addFormError(af) {
+  if (state.library.some(function (i) { return i.showId === af.selected.id; })) return 'That show is already in your library.';
+  if (!af.platform.trim()) return 'Enter where you’re watching it.';
+  if (af.progress === 'lastwatched' && (af.season === '' || af.episode === '')) return 'Enter the season and episode you last watched.';
+  return '';
 }
 
 function submitAddShow() {
   var af = state.addFlow;
-  af.error = '';
+  af.error = addFormError(af);
+  if (af.error) { renderAddForm(); return; }
 
-  if (state.library.some(function (i) { return i.showId === af.selected.id; })) {
-    af.error = 'That show is already in your library.';
-    renderAddForm();
-    return;
-  }
-
-  var hasSeason = af.season !== '' && af.season != null;
-  var hasEpisode = af.episode !== '' && af.episode != null;
-  if (hasSeason !== hasEpisode) {
-    af.error = 'Enter both season and episode, or leave both blank.';
-    renderAddForm();
-    return;
-  }
-
-  var newItem = {
-    showId: af.selected.id,
-    platform: af.platform.trim(),
-    watchedEpisodeId: null,
-    pendingSeasonNumber: hasSeason ? { season: parseInt(af.season, 10), number: parseInt(af.episode, 10) } : null
-  };
+  var newItem = { showId: af.selected.id, platform: af.platform.trim(), watchedEpisodeId: null };
+  if (af.progress === 'caughtup') newItem.pendingCaughtUp = true;
+  if (af.progress === 'lastwatched') newItem.pendingSeasonNumber = { season: parseInt(af.season, 10), number: parseInt(af.episode, 10) };
   var name = af.selected.name;
 
   state.library.push(newItem);
@@ -1736,20 +1826,32 @@ function submitAddShow() {
   af.busy = true;
   renderAddForm();
 
-  // ADD-3/ADD-5: place by computed status, then show that segment.
+  // ADD-3/ADD-5: place by computed status, show that segment, highlight the row.
   refreshComputedFor([newItem], { isNewAddition: true }).then(function () {
     var c = state.computed[newItem.showId];
     state.listQuery = '';
     state.view = 'list';
     if (c) {
       state.segment = displaySegment(withArchiveOverride(c.status, newItem.archived));
+      state.justAddedShowId = newItem.showId;
       render();
       showToast(name + ' added to ' + SEGMENT_LABELS[state.segment]);
+      clearTimeout(justAddedTimer);
+      justAddedTimer = setTimeout(clearJustAdded, CONFIRM_MS);
     } else {
       render();
-      showToast(name + ' added');
+      showToast(name + ' was added, but its episode details couldn’t be loaded.');
     }
   });
+}
+
+var justAddedTimer = null;
+
+// Ends the ADD-5 row highlight without redrawing the screen.
+function clearJustAdded() {
+  var row = document.getElementById('row-' + state.justAddedShowId);
+  if (row) row.classList.remove('just-added');
+  state.justAddedShowId = null;
 }
 
 // --- Settings (SET-1) ---------------------------------------------------------
@@ -1977,6 +2079,23 @@ function markWatched(showId, fromDetail) {
   render();
 }
 
+// DET-6: move the user's place one episode back or forward, stay on the
+// detail screen, and confirm where they are now.
+function stepEpisode(showId, direction) {
+  var item = findItem(showId);
+  var c = state.computed[showId];
+  if (!item || !c || item.archived) return;
+  var newId = stepWatchedEpisode(c.episodes, item.watchedEpisodeId, direction);
+  if (newId === undefined) return;
+  item.watchedEpisodeId = newId;
+  c.status = computeShowStatus(c.show, c.episodes, item.watchedEpisodeId);
+  saveLibrary(state.library);
+  render();
+  var ep = c.status.nextEpisode;
+  showToast(ep ? 'Now up to ' + formatEpisodeCode(ep) + (ep.name ? ' - ' + ep.name : '')
+               : 'Caught up on ' + c.show.name);
+}
+
 // DET-3: immediate and permanent, as in V1.
 function removeShow(showId) {
   state.library = state.library.filter(function (i) { return i.showId !== showId; });
@@ -2025,6 +2144,12 @@ function refreshComputedFor(items, options) {
         }
         item.watchedEpisodeId = resolvedId;
         delete item.pendingSeasonNumber;
+        changed = true;
+      }
+
+      if (item.pendingCaughtUp) {
+        item.watchedEpisodeId = lastAiredEpisodeId(episodes);
+        delete item.pendingCaughtUp;
         changed = true;
       }
 

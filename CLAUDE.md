@@ -93,6 +93,7 @@ Requirement IDs are stable; reference them in commits and tests.
 - **NAV-7** The **"My Shows" wordmark** in the header is a link that also returns to the main display, behaving identically to **Show**.
 - **NAV-8** Screens below the top level (show detail, sync setup, backup & restore) show a **back arrow** in the header that returns to the previous screen.
 - **NAV-9** Returning to the main display keeps the last-selected segment (see open decision **OD-13**).
+- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.2.0`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
 
 ### 4.2 Main display (Shows list)
 
@@ -129,18 +130,28 @@ Requirement IDs are stable; reference them in commits and tests.
 ### 4.4 Add flow
 
 - **ADD-1** The **Add Show** button opens a TVmaze search screen (same search source and search behavior as V1).
-- **ADD-2** The add form is the V1 form: tap a result to select it, optionally enter **Watching on** (platform) and the **last season and episode watched**, then tap **Add show**. There is a single way to add a show; there is no "Save for later".
+- **ADD-2** The add form: tap a result to select it, enter **Watching on** (platform), answer **Where are you up to?**, then tap **Add show**. There is a single way to add a show; there is no "Save for later".
+- **ADD-7** **Watching on** is **required**. If it is blank (or only spaces), **Add show** shows `Enter where you're watching it.` above the button and nothing is added. The error disappears as soon as the user types. The placeholder reads `e.g. Hulu, Netflix` so it can't be mistaken for a filled-in value.
+- **ADD-8** **Where are you up to?** has three choices, shown in this order with exactly these labels; **Caught Up** is selected by default:
+  - **Starting** — nothing watched; the next episode is the first one.
+  - **Season/Episode last watched** — Season and Episode fields (both required, shown only when this choice is picked) give the last episode watched, as in V1.
+  - **Caught Up** — every episode (specials included) that has aired by today is marked watched. A show still in production goes to **Waiting** (countdown if the next date is known, otherwise "Renewed - no date yet"); an ended show goes to **Done**. A show with nothing aired yet goes to Waiting.
 - **ADD-3** The app places the added show automatically from its computed status: **Watching** if its next episode has aired, otherwise **Waiting** (or **Done** if it has ended and everything is watched). The user does not pick the segment.
 - **ADD-4** A show still waiting for a new season can never be placed in Watching (follows from ADD-3).
-- **ADD-5** After adding, the app returns to the main display on the segment the show was placed in, and a confirmation toast names it, e.g. `The Bear added to Waiting`.
+- **ADD-5** After adding, the app returns to the main display on the segment the show was placed in. A large confirmation toast names it for about 5 seconds, e.g. `The Bear added to Waiting`, and the new show's row is highlighted for the same time. If the show's TVmaze data could not be loaded, the toast says so instead: `The Bear was added, but its episode details couldn't be loaded.`
 - **ADD-6** A search result already in the library shows its current segment (e.g. `In Watching`) and cannot be selected again.
 
 ### 4.5 Show detail
 
-- **DET-1** The tracked show detail screen is **the same as V1**: same content, layout and actions (including mark watched, suspend/resume and delete).
+- **DET-1** The tracked show detail screen is **the same as V1**: same content, layout and actions (including mark watched, suspend/resume and delete), plus the Previous/Next episode buttons in DET-6.
 - **DET-2** Suspending a show moves it to the **Suspended** section of Waiting; resuming returns it to its computed segment.
 - **DET-3** **Delete series** on the detail screen deletes the show **entirely** from the library, exactly as in V1: there is no confirmation step, no archive and no undo in the app. The deletion is pushed to the gist like any other change (see DATA-9).
 - **DET-5** No ratings anywhere.
+- **DET-6** Below Mark watched, the detail screen has **‹ Previous episode** and **Next episode ›** buttons that **change the user's progress** (they do not just browse):
+  - **Previous** moves the last-watched episode back one (in air-date order, specials included), e.g. to undo an accidental Mark watched. From the first episode it means "nothing watched". Disabled when nothing has been watched.
+  - **Next** marks the next episode watched without watching it (skip). It works for unaired episodes too. Disabled when there is no further episode.
+  - The user stays on the detail screen; a toast confirms the new position (`Now up to S04E02 - Sundae`, or `Caught up on The Bear`). The show's segment updates from its new computed status, and the change is saved and synced like any other.
+  - Not shown for suspended shows (progress is frozen until reactivated).
 
 ### 4.6 Settings
 
@@ -176,7 +187,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │  ← wordmark = home link (NAV-7)
-│                                     │     sync indicator (SYN-5, OD-8)
+│  Version 2.2.0                      │     sync indicator (SYN-5, OD-8); version (VER-1)
 │  ( 🔍 Search my shows            )  │
 │                                     │
 │ ┌───────────┬───────────┬─────────┐ │
@@ -280,41 +291,43 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 └─────────────────────────────────────┘
 ```
 
-### 5.6 Add Show — V1 form (ADD-2)
+### 5.6 Add Show (ADD-2, ADD-7, ADD-8)
 
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │
+│  Version 2.2.0                      │  ← VER-1
 │  Add show                           │
 │  Search                             │
-│  ( severance                     )  │
+│  ( shogun                        )  │
 │ ┌─────────────────────────────────┐ │
-│ │▢ Severance    2022, Apple TV+   │ │  ← selected
+│ │▢ Shōgun       2024, FX on Hulu  │ │  ← selected
 │ └─────────────────────────────────┘ │
-│ ┌─────────────────────────────────┐ │
-│ │▢ Slow Horses  2022  In Watching │ │  ← already in library (ADD-6)
-│ └─────────────────────────────────┘ │
-│  Watching on                        │
-│  ( Apple TV+                     )  │
-│  Last episode watched               │
-│  Season ( 1 )      Episode ( 9 )    │
-│  Leave blank if you have not started│
+│  Watching on (required)             │
+│  ( Hulu                          )  │
+│  Where are you up to?               │
+│  ( ) Starting                       │
+│  ( ) Season/Episode last watched    │
+│      Season ( 1 )   Episode ( 4 )   │  ← shown only for this choice
+│  (●) Caught Up                      │  ← default
 │  [            Add show            ] │
 ├─────────────────────────────────────┤
 │   ▣ Show     ＋ Add Show   ⚙ Settings │  ← hidden while typing (OD-11)
 └─────────────────────────────────────┘
 ```
 
-### 5.7 After adding — placed segment and toast (ADD-5)
+### 5.7 After adding — placed segment, highlight and toast (ADD-5)
 
 ```
 ┌─────────────────────────────────────┐
 │ ┌───────────┬───────────┬─────────┐ │
 │ │ Watching 7│●Waiting 13│ Done 9  │ │  ← opens on the placed segment
 │ └───────────┴───────────┴─────────┘ │
+│  ┃ Shōgun - Hulu                  ┃ │  ← highlighted ~5 s
+│  ┃ Renewed - no date yet          ┃ │
 │  ...                                │
 │ ┌─────────────────────────────────┐ │
-│ │ ✓ Severance added to Waiting    │ │
+│ │ ✓ Shōgun added to Waiting       │ │  ← larger, ~5 s
 │ └─────────────────────────────────┘ │
 ├─────────────────────────────────────┤
 │   ▣ Show     ＋ Add Show   ⚙ Settings │
@@ -336,6 +349,10 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 │  │  incl. delete                 │  │     Suspended; DET-3: delete is
 │  │                               │  │     immediate and permanent (V1)
 │  └───────────────────────────────┘  │
+│  [      Mark watched             ]  │
+│  [‹ Previous episode][Next episode ›]│  ← DET-6: change progress
+│  Moves where you're up to back or   │
+│  forward one episode.               │
 ├─────────────────────────────────────┤
 │   ▣ Show     ＋ Add Show   ⚙ Settings │
 └─────────────────────────────────────┘
@@ -469,7 +486,8 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
     showId: 251,              // TVmaze show id (required, integer, unique in the library)
     platform: "Hulu",         // free text, may be ""
     watchedEpisodeId: 20865,  // TVmaze episode id of the last watched episode, or null
-    pendingSeasonNumber: { season: 2, number: 8 },  // transient, resolved to watchedEpisodeId on first load
+    pendingSeasonNumber: { season: 2, number: 8 },  // transient (Season/Episode last watched), resolved to watchedEpisodeId on first load
+    pendingCaughtUp: true,    // transient (Caught Up), resolved to the last aired episode on first load
     availableOrder: 0,        // sort position within Watching (lower = higher)
     archived: false,          // suspended (shown in Waiting › Suspended)
     archivedAt: "2026-07-16", // date suspended
@@ -615,7 +633,8 @@ All open decisions were settled on 2026-10-25 before the initial build.
 
 Items in the current design that could confuse users, to resolve or accept explicitly:
 
-- **U-1 Shows that "disappear" after adding.** A new show may land in Waiting while the user expects Watching. ADD-5 (return to the placed segment, with a toast) addresses this.
+- **U-1 Shows that "disappear" after adding.** A new show may land in Waiting while the user expects Watching. ADD-5 (return to the placed segment, highlighted row, toast) addresses this.
+- **U-19 "Caught up" is the default.** Someone adding a show they haven't started must change the choice to **Starting**; otherwise the show lands in Waiting or Done with every aired episode marked watched. The highlighted row and toast naming the segment make a wrong choice visible straight away; the fix is to delete and re-add the show.
 - **U-2 Automatic moves between segments.** Shows move from Waiting to Watching on their own when an episode airs. The guide should explain this once; otherwise a user may think a show vanished from Waiting.
 - **U-3 Suspended shows live under Waiting.** A suspended show with new episodes available stays in Waiting › Suspended, not Watching. The section heading makes this visible, but a user who suspended a show long ago may look for it in Done.
 - **U-4 Search changes the segment control's meaning.** While searching, the segments do not filter. The control is hidden or dimmed during search (mockup 5.4) so it does not look active.
@@ -664,3 +683,6 @@ Items in the current design that could confuse users, to resolve or accept expli
 | 2026-10-25 | README requirements added (DOC-1 to DOC-3): opens with a "V2 vs V1" section stating the apps are totally separate, V2 is for automatic multi-device sync with UI cleanups, and there is no migration. |
 | 2026-10-25 | All open decisions settled (§10). Want dropped; Add uses the V1 form and returns to the placed segment; DATA-2 schema defined; GST-18 validate before push; Statcounter V2 project added (GST-19); DET-3 corrected (V1 has no delete confirmation). |
 | 2026-10-25 | Initial build: OD-11 limited to touch screens (found while testing: on a Mac the tool bar vanished whenever a field had focus); dark-mode text on accent buttons made readable; Settings rows made real buttons. |
+| 2026-10-25 | Version 2.1.0: Watching on required (ADD-7); "Where are you up to?" with Caught up / Not started / Partway, Caught up default (ADD-8, DATA-2 `pendingCaughtUp`); version line under the wordmark (VER-1); larger 5 s toast, row highlight and explicit load-failure message (ADD-5); add error clears on typing and platform placeholder made unambiguous (ADD-7); U-19 added. |
+| 2026-10-25 | Version 2.1.1: ADD-8 choices renamed and reordered to Starting / Season/Episode last watched / Caught Up (Caught Up still the default). |
+| 2026-10-25 | Version 2.2.0: Previous / Next episode buttons on the detail screen change the user's progress (DET-6); DET-1 updated to include them. |

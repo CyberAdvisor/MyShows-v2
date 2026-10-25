@@ -60,7 +60,10 @@ const shows = {
 
 const searchResults = [
   { score: 10, show: { id: 501, name: 'The Bear', premiered: '2022-06-23', network: { name: 'FX' }, image: { medium: 'x.jpg' } } },
-  { score: 9, show: { id: 777, name: 'Severance', premiered: '2022-02-18', webChannel: { name: 'Apple TV+' }, image: null } }
+  { score: 9, show: { id: 777, name: 'Severance', premiered: '2022-02-18', webChannel: { name: 'Apple TV+' }, image: null } },
+  { score: 8, show: { id: 999, name: 'Fresh Show', premiered: '2020-01-01', image: null } },
+  { score: 7, show: { id: 888, name: 'Fleabag', premiered: '2016-07-21', image: null } },
+  { score: 6, show: { id: 4242, name: 'Unloadable Show', premiered: '2021-01-01', image: null } } // TVmaze details fail
 ];
 
 // Minimal fetch Response stand-in.
@@ -193,7 +196,9 @@ async function start(opts) {
   window.eval(scriptBody);
   // The real debounce is 2 s (GST-4); checked once, then shortened for speed.
   assert.strictEqual(window.SYNC_DEBOUNCE_MS, 2000, 'push debounce is about 2 seconds');
+  assert.strictEqual(window.CONFIRM_MS, 5000, 'add confirmation shows for about 5 seconds (ADD-5)');
   window.SYNC_DEBOUNCE_MS = 30;
+  window.CONFIRM_MS = 60;
   await wait(80);
   return env;
 }
@@ -212,6 +217,22 @@ function type(env, id, value) {
   assert.ok(el, 'input #' + id + ' exists');
   el.value = value;
   el.oninput({ target: el });
+}
+// Picks a "Where are you up to?" choice on the Add form (ADD-8).
+function chooseProgress(env, value) {
+  const radio = env.doc.querySelector('input[name="progress"][value="' + value + '"]');
+  assert.ok(radio, 'progress choice ' + value + ' exists');
+  radio.checked = true;
+  radio.onchange();
+}
+// Searches on the Add screen and selects one result.
+async function selectResult(env, query, showId) {
+  click(env, 'tab-add');
+  await wait(10);
+  type(env, 'search-input', query);
+  await wait(400);
+  env.doc.querySelector('.search-result[data-id="' + showId + '"]').click();
+  await wait(5);
 }
 function rowTitles(env) {
   return [...env.doc.querySelectorAll('.row-title')].map(el => el.childNodes[0].textContent.trim());
@@ -373,10 +394,12 @@ async function testAddShowFlowAndPush() {
   env.doc.querySelector('.search-result[data-id="501"]').click();
   await wait(10);
   type(env, 'platform-input', 'Hulu');
+  chooseProgress(env, 'lastwatched');
+  await wait(5);
   type(env, 'season-input', '4');
   type(env, 'episode-input', '2');
   click(env, 'submit-add-btn');
-  await wait(80);
+  await wait(40);
 
   assert.strictEqual(env.window.state.view, 'list', 'returns to the main display after adding (OD-10)');
   assert.ok(env.doc.querySelector('.segments button[data-segment="watching"]').className.includes('active'), 'opens on the placed segment');
@@ -431,27 +454,117 @@ async function testAddScreenMarksShowsAlreadyInList() {
   assert.ok(!env.doc.getElementById('submit-add-btn'), 'a show already in the list cannot be selected');
   env.doc.querySelector('.search-result[data-id="777"]').click();
   await wait(5);
+  type(env, 'platform-input', 'Apple TV+');
+  chooseProgress(env, 'starting');
+  await wait(5);
   click(env, 'submit-add-btn');
-  await wait(80);
-  assert.ok(text(env, '#toast').includes('Severance added to Watching'), 'a never-watched show with an aired episode goes to Watching');
+  await wait(40);
+  assert.ok(text(env, '#toast').includes('Severance added to Watching'), 'a Starting show with an aired episode goes to Watching');
   console.log('testAddScreenMarksShowsAlreadyInList passed.');
 }
 
-async function testWaitingPlacementOnAdd() {
+async function testPlatformRequired() {
   const env = await start({ library: [] });
-  click(env, 'tab-add');
-  await wait(10);
-  type(env, 'search-input', 'Severance');
-  await wait(400);
-  env.doc.querySelector('.search-result[data-id="777"]').click();
+  await selectResult(env, 'Severance', 777);
+  assert.ok(text(env, '#add-form .field-label').includes('required'), 'the field is labelled as required');
+  click(env, 'submit-add-btn');
+  await wait(20);
+  assert.strictEqual(text(env, '#add-error'), 'Enter where you\u2019re watching it.', 'blank platform is rejected (ADD-7)');
+  type(env, 'platform-input', '   ');
+  click(env, 'submit-add-btn');
+  await wait(20);
+  assert.ok(text(env, '#add-error').includes('Enter where'), 'spaces alone do not count');
+  const platformInput = env.doc.getElementById('platform-input');
+  type(env, 'platform-input', 'H');
+  assert.ok(!env.doc.getElementById('add-error'), 'the error clears as soon as the user types');
+  assert.strictEqual(env.doc.getElementById('platform-input'), platformInput, 'without replacing the input');
+  type(env, 'platform-input', '');
+  assert.strictEqual(env.window.state.library.length, 0, 'nothing was added');
+  assert.strictEqual(env.window.state.view, 'add', 'stays on the Add screen');
+  console.log('testPlatformRequired passed.');
+}
+
+async function testWhereAreYouUpTo() {
+  // Caught up is the default (ADD-8).
+  let env = await start({ library: [] });
+  await selectResult(env, 'fresh', 999);
+  const checked = env.doc.querySelector('input[name="progress"]:checked');
+  assert.strictEqual(checked.value, 'caughtup', 'Caught Up is selected by default');
+  const labels = [...env.doc.querySelectorAll('.progress-choice span')].map(l => l.textContent);
+  assert.deepStrictEqual(labels, ['Starting', 'Season/Episode last watched', 'Caught Up'], 'choices use the agreed wording and order (ADD-8)');
+  assert.ok(!env.doc.getElementById('season-input'), 'season/episode fields are hidden unless that choice is picked');
+  type(env, 'platform-input', 'Netflix');
+  click(env, 'submit-add-btn');
+  await wait(40);
+  assert.ok(env.doc.querySelector('.segments button[data-segment="waiting"]').className.includes('active'), 'caught up, renewed, no date -> Waiting');
+  assert.ok(text(env, '#toast').includes('Fresh Show added to Waiting'));
+  assert.ok(text(env, '.row-sub').includes('Renewed - no date yet'), 'shown as pending return');
+  assert.strictEqual(storedLibrary(env)[0].watchedEpisodeId, 9001, 'every aired episode marked watched');
+  assert.strictEqual(storedLibrary(env)[0].pendingCaughtUp, undefined, 'the transient marker is resolved and removed');
+
+  // ADD-5: highlighted row, cleared after the confirmation time.
+  assert.ok(env.doc.getElementById('row-999').classList.contains('just-added'), 'new row is highlighted');
+  await wait(120);
+  assert.ok(!env.doc.getElementById('row-999').classList.contains('just-added'), 'highlight ends');
+  assert.ok(!env.doc.getElementById('toast').classList.contains('show'), 'toast ends');
+
+  // Caught up on a running show with a dated next episode -> Waiting with countdown.
+  await selectResult(env, 'Severance', 777);
+  type(env, 'platform-input', 'Apple TV+');
+  click(env, 'submit-add-btn');
+  await wait(40);
+  assert.ok(text(env, '#toast').includes('Severance added to Waiting'));
+  assert.ok(text(env, '#row-777').includes('S02E02'), 'next episode is the unaired one');
+
+  // Caught up on an ended show -> Done.
+  await selectResult(env, 'Fleabag', 888);
+  type(env, 'platform-input', 'Prime Video');
+  click(env, 'submit-add-btn');
+  await wait(40);
+  assert.ok(text(env, '#toast').includes('Fleabag added to Done'));
+
+  // Season/Episode last watched needs both numbers.
+  await selectResult(env, 'Bear', 501);
+  type(env, 'platform-input', 'Hulu');
+  chooseProgress(env, 'lastwatched');
   await wait(5);
-  type(env, 'season-input', '2');
+  const choiceLabels = [...env.doc.querySelectorAll('#add-form .progress-choice, #add-form .partway-fields')].map(el => el.className);
+  assert.deepStrictEqual(choiceLabels, ['progress-choice', 'progress-choice', 'field-row partway-fields', 'progress-choice'],
+    'season/episode fields sit directly under their own choice, not under Caught Up');
+  type(env, 'season-input', '4');
+  click(env, 'submit-add-btn');
+  await wait(20);
+  assert.strictEqual(text(env, '#add-error'), 'Enter the season and episode you last watched.');
+  type(env, 'season-input', '4');
   type(env, 'episode-input', '1');
   click(env, 'submit-add-btn');
-  await wait(80);
-  assert.ok(env.doc.querySelector('.segments button[data-segment="waiting"]').className.includes('active'), 'caught-up show opens Waiting (ADD-3/4)');
-  assert.ok(text(env, '#toast').includes('added to Waiting'));
-  console.log('testWaitingPlacementOnAdd passed.');
+  await wait(40);
+  assert.ok(text(env, '#toast').includes('The Bear added to Watching'), 'last watched with an aired next episode -> Watching');
+  assert.ok(text(env, '#row-501').includes('S04E02'));
+  console.log('testWhereAreYouUpTo passed.');
+}
+
+async function testAddWhenDetailsCannotLoad() {
+  const env = await start({ library: [] });
+  await selectResult(env, 'unloadable', 4242);
+  type(env, 'platform-input', 'Hulu');
+  click(env, 'submit-add-btn');
+  await wait(40);
+  assert.strictEqual(text(env, '#toast'), '\u2713 Unloadable Show was added, but its episode details couldn\u2019t be loaded.', 'explicit message (ADD-5)');
+  assert.strictEqual(storedLibrary(env)[0].showId, 4242, 'the show is still saved');
+  console.log('testAddWhenDetailsCannotLoad passed.');
+}
+
+async function testVersionLine() {
+  let env = await start();
+  assert.strictEqual(text(env, '#version-link'), 'Version ' + env.window.APP_VERSION, 'version shown on Setup (VER-1)');
+  env = await start({ library: [] });
+  assert.strictEqual(text(env, '#version-link'), 'Version ' + env.window.APP_VERSION, 'version shown under the wordmark');
+  assert.strictEqual(env.doc.getElementById('version-link').getAttribute('href'), 'changelog/', 'tapping it opens the changelog');
+  click(env, 'tab-settings');
+  await wait(5);
+  assert.ok(env.doc.getElementById('version-link'), 'shown on Settings too');
+  console.log('testVersionLine passed.');
 }
 
 // =====================================================================
@@ -881,6 +994,57 @@ async function testWatchingOrdering() {
   console.log('testWatchingOrdering passed.');
 }
 
+async function testPreviousNextEpisode() {
+  const env = await start({ library: [{ showId: 501, platform: 'Hulu', watchedEpisodeId: 1002 }] });
+  click(env, 'row-501');
+  await wait(5);
+  assert.ok(text(env, '.row-sub').includes('S04E03'), 'starts with S4E3 up next');
+
+  // Previous: undo an accidental mark watched (DET-6).
+  click(env, 'prev-episode-btn');
+  await wait(5);
+  assert.strictEqual(env.window.state.view, 'detail', 'stays on the detail screen');
+  assert.ok(text(env, '.row-sub').includes('S04E02'), 'moved back one: S4E2 is next again');
+  assert.ok(text(env, '#toast').includes('Now up to S04E02 - Sundae'), 'confirms where you are now');
+  assert.strictEqual(storedLibrary(env)[0].watchedEpisodeId, 1001);
+
+  click(env, 'prev-episode-btn');
+  await wait(5);
+  assert.strictEqual(storedLibrary(env)[0].watchedEpisodeId, null, 'back from the first episode: nothing watched');
+  assert.ok(env.doc.getElementById('prev-episode-btn').disabled, 'Previous disabled when nothing is watched');
+
+  // Next: skip forward without watching, all the way to caught up.
+  click(env, 'next-episode-btn');
+  click(env, 'next-episode-btn');
+  click(env, 'next-episode-btn');
+  await wait(5);
+  assert.strictEqual(storedLibrary(env)[0].watchedEpisodeId, 1003, 'skipped forward three episodes');
+  assert.ok(text(env, '.row-sub').includes('S04E04'), 'next up is the unaired S4E4');
+  assert.ok(!env.doc.getElementById('mark-watched-btn'), 'no Mark watched for an unaired episode (V1)');
+  click(env, 'next-episode-btn');
+  await wait(5);
+  assert.ok(text(env, '#toast').includes('Caught up on The Bear'), 'confirms caught up');
+  assert.ok(env.doc.getElementById('next-episode-btn').disabled, 'Next disabled when there is no further episode');
+  assert.ok(!env.doc.getElementById('prev-episode-btn').disabled, 'Previous still available when caught up');
+
+  click(env, 'back-btn');
+  await wait(5);
+  assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting1', 'Done0'], 'the show moved to the group its new place puts it in');
+  await wait(80);
+  assert.strictEqual(env.gh.content(env.gistId).library[0].watchedEpisodeId, 1004, 'the change synced to the gist');
+
+  // Suspended shows have no Previous/Next.
+  clickSegment(env, 'waiting');
+  click(env, 'row-501');
+  await wait(5);
+  click(env, 'end-series-link');
+  await wait(5);
+  click(env, 'row-501');
+  await wait(5);
+  assert.ok(!env.doc.getElementById('prev-episode-btn') && !env.doc.getElementById('next-episode-btn'), 'no buttons while suspended');
+  console.log('testPreviousNextEpisode passed.');
+}
+
 async function testEpisodesLeftOnDetail() {
   const env = await start({ library: [{ showId: 251, platform: '', watchedEpisodeId: 20864 }] });
   click(env, 'row-251');
@@ -899,7 +1063,10 @@ async function testEpisodesLeftOnDetail() {
     await testOnlyInvalidListStartsNewGist();
     await testAddShowFlowAndPush();
     await testAddScreenMarksShowsAlreadyInList();
-    await testWaitingPlacementOnAdd();
+    await testPlatformRequired();
+    await testWhereAreYouUpTo();
+    await testAddWhenDetailsCannotLoad();
+    await testVersionLine();
     await testSegmentsSearchAndNavigation();
     await testSuspendReactivateAndDelete();
     await testPullOnLoadAndOnResume();
@@ -918,6 +1085,7 @@ async function testEpisodesLeftOnDetail() {
     await testSearchErrorVisibility();
     await testWatchingOrdering();
     await testEpisodesLeftOnDetail();
+    await testPreviousNextEpisode();
     console.log('All app integration tests passed.');
     openWindows.forEach(w => w.close());
   } catch (err) {
