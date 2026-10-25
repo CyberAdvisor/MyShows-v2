@@ -327,7 +327,7 @@ const TODAY = '2026-07-12';
     e('Bravo Suspended', withArchiveOverride({ group: 'pending', nextEpisode: null }, true))
   ];
   const seg = buildSegments(entries);
-  assert.deepStrictEqual(seg.watching.map(x => x.show.name), ['Top', 'Bottom'], 'Watching keeps the V1 availableOrder sort');
+  assert.deepStrictEqual(seg.watching.map(x => x.show.name), ['Top', 'Bottom'], 'several-waiting shows keep the V1 availableOrder sort');
   assert.deepStrictEqual(seg.waiting.map(x => x.show.name), ['Sooner', 'Later', 'Alpha Pending', 'Zed Pending'],
     'Waiting section 1: soonest air date first, then no-date shows A-Z (OD-12)');
   assert.deepStrictEqual(seg.suspended.map(x => x.show.name), ['Bravo Suspended', 'Yankee Suspended'], 'Suspended is A-Z');
@@ -412,6 +412,34 @@ const TODAY = '2026-07-12';
   const newest = changelog.match(/class="entry-date">[^<]*<span class="tag">Version ([\d.]+)/);
   assert.ok(newest, 'changelog entries are tagged with a version');
   assert.strictEqual(newest[1], APP_VERSION, 'APP_VERSION matches the newest changelog entry');
+}
+
+// --- LIST-14: Watching order ---
+{
+  const w = (name, ended, latestAiredDate, order) => ({ show: { name }, availableOrder: order || 0,
+    status: { group: 'available', ended, latestAiredDate, nextEpisode: { airdate: '2000-01-01' } } });
+  const seg = buildSegments([
+    w('Ended Bottom', true, '2020-01-01', 3),
+    w('Current Old', false, '2025-01-10', 0),
+    w('Ended Top', true, '2026-07-01', -2),
+    w('Current New', false, '2026-07-10', 9),
+    w('Ended Middle', true, '2024-05-05', 0),
+    w('Current Mid', false, '2026-03-01', -5)
+  ]);
+  assert.deepStrictEqual(seg.watching.map(x => x.show.name),
+    ['Current New', 'Current Mid', 'Current Old', 'Ended Top', 'Ended Middle', 'Ended Bottom'],
+    'current shows first by newest released episode, then ended shows by sink order (not by date)');
+
+  const eps = [
+    { id: 1, season: 1, number: 1, airdate: '2026-06-01' },
+    { id: 2, season: 1, number: 2, airdate: '2026-06-08' },
+    { id: 3, season: 1, number: 3, airdate: '2026-08-01' }
+  ];
+  const running = computeShowStatus({ status: 'Running' }, eps, null, TODAY);
+  assert.strictEqual(running.latestAiredDate, '2026-06-08', 'newest aired episode, even when the user is behind; unaired ignored');
+  assert.strictEqual(running.ended, false);
+  assert.strictEqual(computeShowStatus({ status: 'Ended' }, eps, null, TODAY).ended, true, 'Ended status from TVmaze');
+  assert.strictEqual(computeShowStatus({ status: 'To Be Determined' }, eps, null, TODAY).ended, false, 'only "Ended" counts as ended');
 }
 
 // --- searchEntries (SRCH-2, SRCH-3) ---

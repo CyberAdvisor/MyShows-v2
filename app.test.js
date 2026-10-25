@@ -1035,20 +1035,24 @@ async function testSearchErrorVisibility() {
 }
 
 async function testWatchingOrdering() {
+  // LIST-14: current shows by newest released episode, then ended shows in sink order.
   const env = await start({ library: [
-    { showId: 501, platform: '', watchedEpisodeId: 1002 },
-    { showId: 251, platform: '', watchedEpisodeId: 20864 }
+    { showId: 999, platform: 'x', watchedEpisodeId: null },                      // running, latest aired 2020-01-01
+    { showId: 251, platform: 'x', watchedEpisodeId: 20864, availableOrder: -5 }, // ENDED, several waiting
+    { showId: 501, platform: 'x', watchedEpisodeId: 1002 },                      // running, latest aired 2026-06-25
+    { showId: 888, platform: 'x', watchedEpisodeId: null, availableOrder: 0 },   // ENDED, one waiting
+    { showId: 777, platform: 'x', watchedEpisodeId: null }                       // running, latest aired 2026-01-01
   ] });
-  assert.deepStrictEqual(rowTitles(env), ['The Bear', 'Downton Abbey']);
-  const newItem = { showId: 999, platform: '', watchedEpisodeId: null };
-  env.window.state.library.push(newItem);
-  await env.window.refreshComputedFor([newItem], { isNewAddition: true });
-  env.window.render();
-  assert.strictEqual(rowTitles(env)[0], 'Fresh Show', 'newly added available show goes to the top');
+  assert.deepStrictEqual(rowTitles(env), ['The Bear', 'Severance', 'Fresh Show', 'Downton Abbey', 'Fleabag'],
+    'current shows newest release first, then ended shows');
+
+  // Watching an episode of an ended show drops it to the bottom; the other moves up.
   click(env, 'mark-251');
   await wait(5);
-  const titles = rowTitles(env);
-  assert.strictEqual(titles[titles.length - 1], 'Downton Abbey', 'still-available after mark watched goes to the bottom');
+  assert.deepStrictEqual(rowTitles(env), ['The Bear', 'Severance', 'Fresh Show', 'Fleabag', 'Downton Abbey'],
+    'ended show sinks to the bottom after Mark watched; Fleabag percolates up');
+  assert.ok(storedLibrary(env).find(i => i.showId === 251).availableOrder > 0, 'sink order saved and synced with the list');
+
   console.log('testWatchingOrdering passed.');
 }
 

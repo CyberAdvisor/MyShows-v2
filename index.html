@@ -441,7 +441,7 @@ var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
 var TVMAZE_API = 'https://api.tvmaze.com';
 var GITHUB_API = 'https://api.github.com';
 var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
-var APP_VERSION = '2.3.0';                   // VER-1: must match the newest changelog entry
+var APP_VERSION = '2.5.0';                   // VER-1: must match the newest changelog entry
 var CONFIRM_MS = 5000;                       // ADD-5: how long the add confirmation shows
 
 // === PURE LOGIC START ===
@@ -497,7 +497,10 @@ function findEpisodeIdBySeasonNumber(episodes, season, number) {
 }
 
 // Computes the V1 status of a show: group is available | upcoming | pending |
-// completed, plus the next episode to watch and, for upcoming, days until it airs.
+// completed, plus the next episode to watch. For available it also gives
+// what the Watching order needs (LIST-14): ended (the series has ended) and
+// latestAiredDate (air date of the show's newest aired episode). For
+// upcoming it gives days until the next episode airs.
 function computeShowStatus(show, episodes, watchedEpisodeId, today) {
   today = today || new Date().toISOString().slice(0, 10);
   var watchedIdx = findWatchedIndex(episodes, watchedEpisodeId);
@@ -510,7 +513,11 @@ function computeShowStatus(show, episodes, watchedEpisodeId, today) {
 
   var nextEpisode = episodes[nextIdx];
   if (!nextEpisode.airdate) return { group: 'pending', nextEpisode: nextEpisode };
-  if (nextEpisode.airdate <= today) return { group: 'available', nextEpisode: nextEpisode };
+  if (nextEpisode.airdate <= today) {
+    var latestAiredDate = nextEpisode.airdate;
+    episodes.forEach(function (e) { if (e.airdate && e.airdate <= today && e.airdate > latestAiredDate) latestAiredDate = e.airdate; });
+    return { group: 'available', nextEpisode: nextEpisode, ended: show.status === 'Ended', latestAiredDate: latestAiredDate };
+  }
 
   var daysUntil = Math.round(
     (new Date(nextEpisode.airdate + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000
@@ -632,9 +639,25 @@ function groupTagLabel(status) {
 
 function compareByName(a, b) { return a.show.name.localeCompare(b.show.name); }
 
+// LIST-14 order within Watching. Tier 0: current (not ended) shows, newest
+// released episode first. Tier 1: ended shows, by availableOrder (the V1
+// sink rule: marked watched drops to the bottom, the rest move up).
+function compareWatching(a, b) {
+  var tierA = a.status.ended ? 1 : 0;
+  var tierB = b.status.ended ? 1 : 0;
+  if (tierA !== tierB) return tierA - tierB;
+  if (tierA === 0) {
+    var byDate = (b.status.latestAiredDate || '').localeCompare(a.status.latestAiredDate || '');
+    if (byDate) return byDate;
+  }
+  return (a.availableOrder || 0) - (b.availableOrder || 0);
+}
+
 // Splits entries ({ item, show, status, availableOrder }) into the four
 // lists the main display needs, each sorted:
-//   watching  - V1 "Available now" order (availableOrder)
+//   watching  - LIST-14: current shows first, newest released episode
+//               first; then ended shows in V1 sink order (availableOrder:
+//               added = top, marked watched = bottom)
 //   waiting   - soonest air date first, then "no date yet" shows A-Z (OD-12)
 //   suspended - A-Z
 //   done      - A-Z
@@ -649,7 +672,7 @@ function buildSegments(entries) {
       out[seg].push(e);
     }
   });
-  out.watching.sort(function (a, b) { return (a.availableOrder || 0) - (b.availableOrder || 0); });
+  out.watching.sort(compareWatching);
   upcoming.sort(function (a, b) {
     return a.status.nextEpisode.airdate.localeCompare(b.status.nextEpisode.airdate) || compareByName(a, b);
   });
@@ -1257,7 +1280,7 @@ function syncIndicatorHtml() {
     SYNC_LABELS[sync.status] + '</button>';
 }
 
-// "Version 2.3.0" under the wordmark, linking to the changelog (VER-1).
+// "Version 2.5.0" under the wordmark, linking to the changelog (VER-1).
 function versionLineHtml() {
   return '<a class="version-link" id="version-link" href="changelog/">Version ' + APP_VERSION + '</a>';
 }
