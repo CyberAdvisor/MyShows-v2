@@ -1,0 +1,2108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>My Shows</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f7f7;
+    --border: #e0e0e0;
+    --text: #1a1a1a;
+    --text-secondary: #6b6b6b;
+    --text-muted: #9a9a9a;
+    --accent: #0a66c2;
+    --accent-bg: #e8f1fb;
+    --danger: #c02020;
+    --ok: #1d7a3a;
+    --warn: #b26a00;
+    --on-accent: #ffffff;  /* text on accent-coloured buttons */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212;
+      --surface: #1c1c1c;
+      --border: #333333;
+      --text: #f0f0f0;
+      --text-secondary: #a0a0a0;
+      --text-muted: #777777;
+      --accent: #6db2ff;
+      --accent-bg: #16283b;
+      --danger: #ff6b6b;
+      --ok: #5fd07f;
+      --warn: #f0b04a;
+      --on-accent: #0b1a2b; /* dark text: white on light blue is hard to read */
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: env(safe-area-inset-top, 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 96px);
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 12px 0 16px;
+  }
+  .section-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 20px 0 6px;
+  }
+  .card-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .row:last-child { border-bottom: none; }
+  .row:active { background: var(--accent-bg); }
+  .row-title {
+    font-size: 15px;
+    font-weight: 500;
+    margin: 0;
+  }
+  .row-title .platform {
+    font-weight: 400;
+    color: var(--text-secondary);
+  }
+  .row-sub {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 3px 0 0;
+    font-family: ui-monospace, "SF Mono", monospace;
+  }
+  .row-right {
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+  }
+  button:active { background: var(--accent-bg); }
+  button:disabled { opacity: 0.6; }
+  button.primary {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+  }
+  button.wide { width: 100%; margin-bottom: 10px; }
+  button.danger { color: var(--danger); }
+  button.text {
+    border: none;
+    background: none;
+    color: var(--accent);
+    padding: 4px 6px;
+  }
+  input[type="text"], input[type="number"], input[type="password"], input[type="search"] {
+    font-family: inherit;
+    font-size: 16px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    width: 100%;
+  }
+  .empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 48px 20px;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .icon-btn {
+    border: none;
+    background: none;
+    font-size: 22px;
+    line-height: 1;
+    padding: 4px 8px;
+    color: var(--accent);
+  }
+  .field-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 6px;
+  }
+  .field { margin-bottom: 16px; }
+  .field-row { display: flex; gap: 10px; }
+  .field-row .field { flex: 1; }
+  .hint { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; line-height: 1.5; }
+  .search-result {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .search-result img {
+    width: 36px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .search-result.selected {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+  }
+  .search-result.in-library { cursor: default; opacity: 0.75; }
+  .search-result-name { font-size: 14px; font-weight: 500; margin: 0; }
+  .search-result-meta { font-size: 12px; color: var(--text-secondary); margin: 2px 0 0; }
+  .detail-table {
+    width: 100%;
+    font-size: 14px;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px 14px;
+  }
+  .detail-table td { padding: 8px 0; }
+  .detail-table td:first-child { color: var(--text-secondary); }
+  .detail-table td:last-child { text-align: right; }
+  .synopsis { font-size: 14px; line-height: 1.6; margin: 0 0 20px; }
+  .episode-image {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 14px;
+    display: block;
+    background: var(--surface);
+  }
+  .error-text { color: var(--danger); font-size: 13px; margin: 6px 0 0; line-height: 1.5; }
+  .loading { text-align: center; color: var(--text-secondary); padding: 40px; font-size: 14px; }
+  .remove-link { color: var(--danger); font-size: 13px; }
+  .text-link { color: var(--accent); font-size: 13px; }
+
+  /* --- V2: header with wordmark and sync indicator (NAV-7, SYN-5) --- */
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 10px;
+  }
+  .wordmark {
+    border: none;
+    background: none;
+    padding: 4px 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .sync-ind {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 999px;
+    font-size: 12px;
+    padding: 4px 10px;
+    color: var(--text-secondary);
+  }
+  .sync-ind.synced { color: var(--ok); }
+  .sync-ind.offline { color: var(--warn); }
+  .sync-ind.error { color: var(--danger); border-color: var(--danger); }
+  .screen-title { display: flex; align-items: center; gap: 4px; margin: 8px 0 12px; }
+  .screen-title h1 { margin: 0; }
+  .screen-title .icon-btn { padding-left: 0; }
+
+  /* --- V2: selection boxes (LIST-1, LIST-4) --- */
+  .segments {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 12px 0 4px;
+  }
+  .segments button {
+    flex: 1;
+    border: none;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--surface);
+    padding: 10px 4px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .segments button:last-child { border-right: none; }
+  .segments button.active {
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+  }
+  .segments .count { font-variant-numeric: tabular-nums; margin-left: 4px; }
+  .group-tag {
+    display: inline-block;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    margin-left: 6px;
+  }
+  .search-box { margin-top: 10px; }
+
+  /* --- V2: settings list --- */
+  .settings-row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    border-radius: 0;
+    background: none;
+    font-size: inherit;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row .row-sub { font-family: inherit; }
+  .status-line { font-size: 14px; margin: 0 0 6px; }
+  .choice {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+  .choice input { margin-top: 3px; }
+
+  /* --- V2: bottom tool bar (NAV-1) --- */
+  #toolbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    z-index: 10;
+  }
+  #toolbar .bar { max-width: 480px; margin: 0 auto; display: flex; }
+  #toolbar button {
+    flex: 1;
+    border: none;
+    border-radius: 0;
+    background: none;
+    padding: 12px 4px;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+  #toolbar button.active { color: var(--accent); font-weight: 600; }
+  #toolbar.hidden { display: none; }
+  /* OD-11: hide while the on-screen keyboard is up. Touch screens only, so a
+     Mac or an iPad with a hardware keyboard keeps its tool bar. */
+  @media (pointer: coarse) {
+    body.typing #toolbar { display: none; }
+  }
+
+  /* --- V2: confirmation toast (ADD-5) --- */
+  #toast {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+    max-width: 448px;
+    margin: 0 auto;
+    background: var(--text);
+    color: var(--bg);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 14px;
+    z-index: 20;
+    display: none;
+  }
+  #toast.show { display: block; }
+</style>
+<!-- Default Statcounter code for MyShows V2
+https://v2.myshows.fyi
+     Placed in the document head, above the app's own inline script tag,
+     rather than near the closing body tag where analytics snippets usually
+     go: app.test.js extracts the app's logic with a greedy regex from the
+     first bare script tag to the LAST closing script tag in the file, so
+     any script tag below the main script breaks every test.
+     Keep any future script tags above the app's inline script too. -->
+<script type="text/javascript">
+var sc_project=13362516;
+var sc_invisible=1;
+var sc_security="3957bcd6";
+</script>
+<script type="text/javascript"
+src="https://www.statcounter.com/counter/counter.js"
+async></script>
+<noscript><div class="statcounter"><a title="Web Analytics
+Made Easy - Statcounter" href="https://statcounter.com/"
+target="_blank"><img class="statcounter"
+src="https://c.statcounter.com/13362516/0/3957bcd6/1/"
+alt="Web Analytics Made Easy - Statcounter"
+referrerPolicy="no-referrer-when-downgrade"></a></div></noscript>
+<!-- End of Statcounter Code -->
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="toolbar" class="hidden"></div>
+
+<script>
+// =====================================================================
+// My Shows V2 - single-file app. See CLAUDE.md for every requirement ID
+// referenced below. Sections follow ARC-3:
+//   1. Constants and storage keys
+//   2. Pure logic (no DOM, no fetch) - also loaded by logic.test.js
+//   3. Storage
+//   4. TVmaze client
+//   5. Gist client
+//   6. Sync controller
+//   7. Rendering
+//   8. Event wiring and init()
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// 1. Constants and storage keys
+// ---------------------------------------------------------------------
+
+var LIBRARY_KEY = 'my-shows-library-v2';     // DATA-1: local working copy
+var SYNC_KEY = 'my-shows-sync-v2';           // DATA-5: token, gist id, sync times
+var GIST_FILENAME = 'myshows.json';          // GST-1
+var GIST_DESCRIPTION = 'My Shows V2';        // GST-17
+var APP_ID = 'myshows';                      // GST-1 "app" marker
+var SCHEMA_VERSION = 1;                      // GST-1
+var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
+var TVMAZE_API = 'https://api.tvmaze.com';
+var GITHUB_API = 'https://api.github.com';
+var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
+
+// === PURE LOGIC START ===
+// ---------------------------------------------------------------------
+// 2. Pure logic. No DOM and no network: logic.test.js extracts the text
+//    between the PURE LOGIC START/END markers and runs it on its own.
+// ---------------------------------------------------------------------
+
+// Zero-pads a season/episode number to two digits.
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+// Sorts TVmaze episodes (specials included) into broadcast order by airdate.
+// Entries with no season at all are dropped. Unchanged from V1.
+function sortedEpisodes(rawEpisodes) {
+  return rawEpisodes
+    .filter(function (e) { return e.season != null; })
+    .slice()
+    .sort(function (a, b) {
+      if (a.airdate && b.airdate) {
+        if (a.airdate !== b.airdate) return a.airdate.localeCompare(b.airdate);
+        return (a.number == null ? Infinity : a.number) - (b.number == null ? Infinity : b.number);
+      }
+      if (a.airdate && !b.airdate) return -1;
+      if (!a.airdate && b.airdate) return 1;
+      return a.season - b.season || (a.number == null ? Infinity : a.number) - (b.number == null ? Infinity : b.number);
+    });
+}
+
+// True for TVmaze specials, which have no episode number.
+function isSpecial(episode) {
+  return episode.number == null;
+}
+
+// "S04E03", or "S02 Special" for specials.
+function formatEpisodeCode(episode) {
+  var s = pad(episode.season);
+  if (isSpecial(episode)) return 'S' + s + ' Special';
+  return 'S' + s + 'E' + pad(episode.number);
+}
+
+// Index of the last watched episode in a sorted list, or -1.
+// Progress is tracked by TVmaze episode id, never season/number, because
+// several specials can share a season with no number (see CLAUDE.md DATA-2).
+function findWatchedIndex(episodes, watchedEpisodeId) {
+  if (watchedEpisodeId == null) return -1;
+  return episodes.findIndex(function (e) { return e.id === watchedEpisodeId; });
+}
+
+// Resolves a typed season/episode (regular episodes only) to its episode id.
+function findEpisodeIdBySeasonNumber(episodes, season, number) {
+  var match = episodes.find(function (e) { return e.season === season && e.number === number; });
+  return match ? match.id : null;
+}
+
+// Computes the V1 status of a show: group is available | upcoming | pending |
+// completed, plus the next episode to watch and, for upcoming, days until it airs.
+function computeShowStatus(show, episodes, watchedEpisodeId, today) {
+  today = today || new Date().toISOString().slice(0, 10);
+  var watchedIdx = findWatchedIndex(episodes, watchedEpisodeId);
+  var nextIdx = watchedIdx + 1;
+
+  if (nextIdx >= episodes.length) {
+    if (show.status === 'Ended') return { group: 'completed', nextEpisode: null };
+    return { group: 'pending', nextEpisode: null };
+  }
+
+  var nextEpisode = episodes[nextIdx];
+  if (!nextEpisode.airdate) return { group: 'pending', nextEpisode: nextEpisode };
+  if (nextEpisode.airdate <= today) return { group: 'available', nextEpisode: nextEpisode };
+
+  var daysUntil = Math.round(
+    (new Date(nextEpisode.airdate + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000
+  );
+  return { group: 'upcoming', nextEpisode: nextEpisode, daysUntil: daysUntil };
+}
+
+// Value that places an item at the TOP of Watching (lower = higher up).
+function nextTopAvailableOrder(items) {
+  var values = items.map(function (i) { return i.availableOrder || 0; }).concat([0]);
+  return Math.min.apply(null, values) - 1;
+}
+
+// Value that places an item at the BOTTOM of Watching.
+function nextBottomAvailableOrder(items) {
+  var values = items.map(function (i) { return i.availableOrder || 0; }).concat([0]);
+  return Math.max.apply(null, values) + 1;
+}
+
+// Episodes remaining in the next episode's season, counting that episode.
+function episodesLeftInSeason(episodes, nextEpisode) {
+  if (!nextEpisode) return 0;
+  var seasonEpisodes = episodes.filter(function (e) { return e.season === nextEpisode.season; });
+  var idx = seasonEpisodes.findIndex(function (e) { return e.id === nextEpisode.id; });
+  if (idx === -1) return 0;
+  return seasonEpisodes.length - idx;
+}
+
+// { remaining, total }: seasons after the current one, out of all seasons.
+function seasonsRemaining(episodes, nextEpisode) {
+  var seasonNumbers = [];
+  episodes.forEach(function (e) {
+    if (seasonNumbers.indexOf(e.season) === -1) seasonNumbers.push(e.season);
+  });
+  if (!nextEpisode) return { remaining: 0, total: seasonNumbers.length };
+  var remaining = seasonNumbers.filter(function (s) { return s > nextEpisode.season; }).length;
+  return { remaining: remaining, total: seasonNumbers.length };
+}
+
+// Suspending ("archiving") is a user override layered on top of the real
+// status, so resuming is a simple flag flip. Archived shows report
+// group 'completed' with archived: true, exactly as in V1.
+function withArchiveOverride(status, archived) {
+  if (!archived) return status;
+  return { group: 'completed', nextEpisode: null, archived: true };
+}
+
+// Frozen record of where a show stood at the moment it was suspended.
+function buildArchiveSnapshot(episodes, watchedEpisodeId, nextEpisode) {
+  var watchedIdx = findWatchedIndex(episodes, watchedEpisodeId);
+  var lastWatchedEpisode = watchedIdx === -1 ? null : episodes[watchedIdx];
+  return {
+    lastWatchedCode: lastWatchedEpisode ? formatEpisodeCode(lastWatchedEpisode) : 'Not started',
+    episodesLeftInSeason: episodesLeftInSeason(episodes, nextEpisode),
+    seasonsRemaining: seasonsRemaining(episodes, nextEpisode)
+  };
+}
+
+// "Today", "Tomorrow", "Fri, 3 days" or "Aug 20" for an upcoming air date.
+function formatCountdown(daysUntil, airdate) {
+  if (daysUntil === 0) return 'Today';
+  if (daysUntil === 1) return 'Tomorrow';
+  var d = new Date(airdate + 'T00:00:00');
+  if (daysUntil <= 6) {
+    return d.toLocaleDateString(undefined, { weekday: 'short' }) + ', ' + daysUntil + ' days';
+  }
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// --- V2 segments (LIST-6) -------------------------------------------
+
+var SEGMENT_LABELS = { watching: 'Watching', waiting: 'Waiting', done: 'Done' };
+
+// Maps a status (after the archive override) to watching | waiting |
+// suspended | done. "suspended" is shown inside the Waiting segment.
+function segmentForStatus(status) {
+  if (status.archived) return 'suspended';
+  if (status.group === 'available') return 'watching';
+  if (status.group === 'completed') return 'done';
+  return 'waiting'; // upcoming and pending
+}
+
+// The selection box a status belongs to: suspended shows sit under Waiting.
+function displaySegment(status) {
+  var seg = segmentForStatus(status);
+  return seg === 'suspended' ? 'waiting' : seg;
+}
+
+// Short label for a show's group, used by search tags (SRCH-4) and the
+// Add screen's "already in your list" marker (ADD-6).
+function groupTagLabel(status) {
+  var seg = segmentForStatus(status);
+  return seg === 'suspended' ? 'Suspended' : SEGMENT_LABELS[seg];
+}
+
+function compareByName(a, b) { return a.show.name.localeCompare(b.show.name); }
+
+// Splits entries ({ item, show, status, availableOrder }) into the four
+// lists the main display needs, each sorted:
+//   watching  - V1 "Available now" order (availableOrder)
+//   waiting   - soonest air date first, then "no date yet" shows A-Z (OD-12)
+//   suspended - A-Z
+//   done      - A-Z
+function buildSegments(entries) {
+  var out = { watching: [], waiting: [], suspended: [], done: [] };
+  var upcoming = [], pending = [];
+  entries.forEach(function (e) {
+    var seg = segmentForStatus(e.status);
+    if (seg === 'waiting') {
+      (e.status.group === 'upcoming' ? upcoming : pending).push(e);
+    } else {
+      out[seg].push(e);
+    }
+  });
+  out.watching.sort(function (a, b) { return (a.availableOrder || 0) - (b.availableOrder || 0); });
+  upcoming.sort(function (a, b) {
+    return a.status.nextEpisode.airdate.localeCompare(b.status.nextEpisode.airdate) || compareByName(a, b);
+  });
+  pending.sort(compareByName);
+  out.waiting = upcoming.concat(pending);
+  out.suspended.sort(compareByName);
+  out.done.sort(compareByName);
+  return out;
+}
+
+// Counts for the three selection boxes. Waiting includes Suspended (OD-16).
+function segmentCounts(segments) {
+  return {
+    watching: segments.watching.length,
+    waiting: segments.waiting.length + segments.suspended.length,
+    done: segments.done.length
+  };
+}
+
+// Library search (SRCH-2): case-insensitive substring match on show name,
+// across every segment (SRCH-3), results A-Z.
+function searchEntries(entries, query) {
+  var q = (query || '').trim().toLowerCase();
+  if (!q) return [];
+  return entries
+    .filter(function (e) { return e.show.name.toLowerCase().indexOf(q) !== -1; })
+    .sort(compareByName);
+}
+
+// --- V2 data validation (GST-2, GST-18, SET-2) --------------------------
+
+function isPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+// One library item (DATA-2). Only shape is checked, not TVmaze existence.
+function isValidLibraryItem(item) {
+  if (!isPlainObject(item)) return false;
+  if (typeof item.showId !== 'number' || !isFinite(item.showId) || Math.floor(item.showId) !== item.showId) return false;
+  if (item.platform !== undefined && typeof item.platform !== 'string') return false;
+  if (item.watchedEpisodeId !== undefined && item.watchedEpisodeId !== null && typeof item.watchedEpisodeId !== 'number') return false;
+  if (item.availableOrder !== undefined && typeof item.availableOrder !== 'number') return false;
+  if (item.archived !== undefined && typeof item.archived !== 'boolean') return false;
+  if (item.pendingSeasonNumber !== undefined && item.pendingSeasonNumber !== null) {
+    var p = item.pendingSeasonNumber;
+    if (!isPlainObject(p) || typeof p.season !== 'number' || typeof p.number !== 'number') return false;
+  }
+  return true;
+}
+
+// A whole library: an array of valid items with no duplicate showIds.
+function isValidLibrary(library) {
+  if (!Array.isArray(library)) return false;
+  var seen = {};
+  for (var i = 0; i < library.length; i++) {
+    if (!isValidLibraryItem(library[i])) return false;
+    if (seen[library[i].showId]) return false;
+    seen[library[i].showId] = true;
+  }
+  return true;
+}
+
+// The wrapper used for both the gist file and backup files (GST-1, DATA-7).
+function wrapPayload(library, updatedAt) {
+  return { app: APP_ID, schemaVersion: SCHEMA_VERSION, updatedAt: updatedAt, library: library };
+}
+
+function isValidPayload(p) {
+  return isPlainObject(p) &&
+    p.app === APP_ID &&
+    p.schemaVersion === SCHEMA_VERSION &&
+    typeof p.updatedAt === 'string' && !isNaN(Date.parse(p.updatedAt)) &&
+    isValidLibrary(p.library);
+}
+
+// Parses gist or backup text. Returns { ok: true, payload } or
+// { ok: false, reason } where reason is 'json' (not JSON), 'v1' (a V1
+// backup: a bare array) or 'shape' (JSON, but not a V2 payload).
+function parsePayloadText(text) {
+  var parsed;
+  try { parsed = JSON.parse(text); } catch (e) { return { ok: false, reason: 'json' }; }
+  if (Array.isArray(parsed)) return { ok: false, reason: 'v1' };
+  if (!isValidPayload(parsed)) return { ok: false, reason: 'shape' };
+  return { ok: true, payload: parsed };
+}
+
+// --- V2 sync decisions (GST-3, GST-7) ------------------------------------
+
+// Last-write-wins by ISO timestamp. Returns:
+//   'pull' - the gist is newer than the last change made on this device
+//   'push' - this device has a change the gist has not received
+//   'none' - both sides already match
+function decideSync(remoteUpdatedAt, lastLocalChangeAt, lastSyncedAt) {
+  if (remoteUpdatedAt && (!lastLocalChangeAt || remoteUpdatedAt > lastLocalChangeAt)) return 'pull';
+  if (lastLocalChangeAt && (!lastSyncedAt || lastLocalChangeAt > lastSyncedAt)) return 'push';
+  return 'none';
+}
+
+// A timestamp that is always later than `previousIso`, so two changes in
+// the same millisecond still compare as newer than each other.
+function nextTimestamp(nowMs, previousIso) {
+  var prev = previousIso ? Date.parse(previousIso) : 0;
+  var t = nowMs > prev ? nowMs : prev + 1;
+  return new Date(t).toISOString();
+}
+
+// From GitHub's gist list, the ids of gists holding a myshows.json file.
+function findCandidateGistIds(gistList) {
+  return gistList
+    .filter(function (g) { return g && g.files && g.files[GIST_FILENAME]; })
+    .map(function (g) { return g.id; });
+}
+
+// Splits fetched candidates ({ id, text }) into valid V2 lists and invalid
+// ones (SYN-4). Valid ones are sorted newest first for the picker.
+function classifyCandidates(candidates) {
+  var valid = [], invalid = [];
+  candidates.forEach(function (c) {
+    var result = c.text == null ? { ok: false } : parsePayloadText(c.text);
+    if (result.ok) valid.push({ id: c.id, payload: result.payload });
+    else invalid.push(c.id);
+  });
+  valid.sort(function (a, b) { return b.payload.updatedAt.localeCompare(a.payload.updatedAt); });
+  return { valid: valid, invalid: invalid };
+}
+
+// User-facing text for each sync error code (SYN-5, §7.3).
+function describeSyncError(code, retryAtText) {
+  switch (code) {
+    case 'offline': return 'Offline — changes saved on this device. They will sync when you are back online.';
+    case 'token': return 'Sync error — token rejected. Your GitHub token has expired, been revoked, or is missing the gist scope. Use Change token.';
+    case 'notfound': return 'Sync error — gist not found. It may have been deleted on GitHub. Use Recreate gist to make a new one from the list on this device.';
+    case 'malformed': return 'Sync error — your gist contains a file that is not a valid My Shows list. It was not applied; the list on this device is unchanged.';
+    case 'invalid': return 'Sync error — the list on this device failed validation, so it was not uploaded. Your gist is unchanged.';
+    case 'ratelimit': return 'GitHub’s rate limit was reached. Sync will try again' + (retryAtText ? ' after ' + retryAtText : ' later') + '.';
+    default: return 'Sync error — GitHub returned an error. Sync will try again on your next change, or use Sync now.';
+  }
+}
+
+// "just now", "5 min ago", or a clock time for older syncs.
+function formatSyncTime(iso, nowMs) {
+  if (!iso) return 'never';
+  var diffMin = Math.floor((nowMs - Date.parse(iso)) / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return diffMin + ' min ago';
+  var d = new Date(iso);
+  var sameDay = d.toDateString() === new Date(nowMs).toDateString();
+  var time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return sameDay ? 'today ' + time : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + time;
+}
+// === PURE LOGIC END ===
+
+// ---------------------------------------------------------------------
+// 3. Storage. localStorage holds the working copy and the sync settings;
+//    the gist is the source of truth (DATA-1). V1 keys are never read.
+// ---------------------------------------------------------------------
+
+function readJson(key) {
+  try {
+    var raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
+    state.errorBanner = 'Could not save on this device. Storage may be full or private browsing is on.';
+    return false;
+  }
+}
+
+// The local working copy, or [] if missing or not a valid V2 library.
+function loadLocalLibrary() {
+  var lib = readJson(LIBRARY_KEY);
+  return isValidLibrary(lib) ? lib : [];
+}
+
+// Writes the working copy only. Used when the change came FROM the gist.
+function writeLocalLibrary(library) {
+  writeJson(LIBRARY_KEY, library);
+}
+
+// Every user change goes through here: saved on the device immediately,
+// then a push to the gist is scheduled (ARC-5, GST-4).
+function saveLibrary(library) {
+  writeLocalLibrary(library);
+  noteLocalChange();
+}
+
+// Sync settings (DATA-5). Their presence decides whether Setup shows.
+function loadSyncSettings() {
+  var s = readJson(SYNC_KEY);
+  return s && typeof s.token === 'string' && s.token && typeof s.gistId === 'string' && s.gistId ? s : null;
+}
+
+function saveSyncSettings(settings) {
+  writeJson(SYNC_KEY, settings);
+}
+
+// Disconnect (SYN-6): remove everything this app stores on the device.
+function clearLocalData() {
+  try {
+    localStorage.removeItem(SYNC_KEY);
+    localStorage.removeItem(LIBRARY_KEY);
+  } catch (e) { /* nothing else to clear */ }
+}
+
+// ---------------------------------------------------------------------
+// 4. TVmaze client (public API, no key - unchanged from V1)
+// ---------------------------------------------------------------------
+
+function searchShows(query) {
+  return fetch(TVMAZE_API + '/search/shows?q=' + encodeURIComponent(query))
+    .then(function (r) {
+      if (!r.ok) throw new Error('TVmaze returned ' + r.status);
+      return r.json();
+    });
+}
+
+// Show info plus every episode. Uses ?specials=1 because ?embed=episodes
+// silently drops specials.
+function fetchShowWithEpisodes(showId) {
+  function getJson(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('TVmaze returned ' + r.status);
+      return r.json();
+    });
+  }
+  return Promise.all([
+    getJson(TVMAZE_API + '/shows/' + showId),
+    getJson(TVMAZE_API + '/shows/' + showId + '/episodes?specials=1')
+  ]).then(function (results) {
+    var show = results[0];
+    show._embedded = { episodes: results[1] };
+    return show;
+  });
+}
+
+// ---------------------------------------------------------------------
+// 5. Gist client. Plain fetch against api.github.com (GST-16). Every
+//    failure is turned into a GistError with one of these codes:
+//    offline | token | scope | notfound | ratelimit | server
+// ---------------------------------------------------------------------
+
+function GistError(code, status, retryAt) {
+  this.code = code;
+  this.status = status || 0;
+  this.retryAt = retryAt || 0;
+}
+
+// Classifies a non-OK GitHub response.
+function errorFromResponse(res) {
+  var remaining = res.headers.get('x-ratelimit-remaining');
+  if (res.status === 429 || (res.status === 403 && remaining === '0')) {
+    var reset = parseInt(res.headers.get('x-ratelimit-reset'), 10);
+    var retryAfter = parseInt(res.headers.get('retry-after'), 10);
+    var retryAt = reset ? reset * 1000 : Date.now() + (retryAfter ? retryAfter * 1000 : 60000);
+    return new GistError('ratelimit', res.status, retryAt);
+  }
+  if (res.status === 401 || res.status === 403) return new GistError('token', res.status);
+  if (res.status === 404) return new GistError('notfound', res.status);
+  return new GistError('server', res.status);
+}
+
+// One authenticated GitHub request. Resolves to the Response when OK.
+function githubRequest(method, path, token, body) {
+  var options = {
+    method: method,
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': 'Bearer ' + token
+    }
+  };
+  if (body !== undefined) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+  return fetch(GITHUB_API + path, options).then(function (res) {
+    if (!res.ok) throw errorFromResponse(res);
+    return res;
+  }, function () {
+    throw new GistError('offline');
+  });
+}
+
+// Checks a token (SYN-3). Rejects with 'token' for a bad token and 'scope'
+// when GitHub reports the token's scopes and gist is not among them.
+function checkToken(token) {
+  return githubRequest('GET', '/user', token).then(function (res) {
+    var scopes = res.headers.get('x-oauth-scopes');
+    if (scopes !== null && scopes.split(',').map(function (s) { return s.trim(); }).indexOf('gist') === -1) {
+      throw new GistError('scope');
+    }
+  });
+}
+
+// Every gist id in the user's account holding myshows.json (all pages).
+function listCandidateGistIds(token) {
+  var ids = [];
+  function page(n) {
+    return githubRequest('GET', '/gists?per_page=100&page=' + n, token)
+      .then(function (res) { return res.json(); })
+      .then(function (list) {
+        ids = ids.concat(findCandidateGistIds(list));
+        if (list.length === 100 && n < 30) return page(n + 1);
+        return ids;
+      });
+  }
+  return page(1);
+}
+
+// Reads one gist. Resolves to { id, text } where text is the myshows.json
+// content, or null if the gist no longer has that file.
+function readGist(token, gistId) {
+  return githubRequest('GET', '/gists/' + gistId, token)
+    .then(function (res) { return res.json(); })
+    .then(function (gist) {
+      var file = gist.files && gist.files[GIST_FILENAME];
+      if (!file) return { id: gistId, text: null };
+      if (!file.truncated) return { id: gistId, text: file.content };
+      // Large files are truncated in the API response; fetch the raw copy.
+      return fetch(file.raw_url).then(function (r) {
+        if (!r.ok) throw new GistError('server', r.status);
+        return r.text();
+      }, function () { throw new GistError('offline'); })
+        .then(function (text) { return { id: gistId, text: text }; });
+    });
+}
+
+// Creates the secret My Shows gist (GST-17). Resolves to its id.
+function createGist(token, payload) {
+  return githubRequest('POST', '/gists', token, {
+    description: GIST_DESCRIPTION,
+    public: false,
+    files: { 'myshows.json': { content: JSON.stringify(payload, null, 2) } }
+  }).then(function (res) { return res.json(); })
+    .then(function (gist) { return gist.id; });
+}
+
+// Replaces myshows.json in an existing gist.
+function writeGist(token, gistId, payload) {
+  return githubRequest('PATCH', '/gists/' + gistId, token, {
+    files: { 'myshows.json': { content: JSON.stringify(payload, null, 2) } }
+  });
+}
+
+// ---------------------------------------------------------------------
+// 6. Sync controller. Pull on load and on resume, push after every local
+//    change (debounced), last-write-wins (§7.2). Work is queued so only
+//    one GitHub exchange runs at a time.
+// ---------------------------------------------------------------------
+
+var sync = {
+  settings: null,      // DATA-5 record, or null when not connected
+  status: 'synced',    // synced | syncing | offline | error
+  errorCode: '',       // see describeSyncError
+  retryAt: 0,          // rate-limit retry time (ms)
+  timer: null,         // debounce / retry timer
+  queue: Promise.resolve()
+};
+
+function isConnected() { return !!sync.settings; }
+
+// Runs fn after any sync work already in progress.
+function enqueue(fn) {
+  sync.queue = sync.queue.then(fn, fn);
+  return sync.queue;
+}
+
+// Called by saveLibrary for every local change.
+function noteLocalChange() {
+  if (!isConnected()) return;
+  sync.settings.lastLocalChangeAt = nextTimestamp(Date.now(), sync.settings.lastLocalChangeAt);
+  saveSyncSettings(sync.settings);
+  schedulePush();
+}
+
+// Automatic syncing stops after a rejected token until it is changed
+// (GST-9) and waits out a rate limit (GST-11).
+function automaticSyncBlocked() {
+  return sync.errorCode === 'token' || sync.errorCode === 'scope';
+}
+
+function schedulePush() {
+  if (automaticSyncBlocked()) return;
+  clearTimeout(sync.timer);
+  var wait = Math.max(SYNC_DEBOUNCE_MS, sync.retryAt - Date.now());
+  sync.timer = setTimeout(function () { enqueue(pushStep); }, wait);
+}
+
+// Pull, then push if this device is newer (GST-3). Used on load, resume
+// and Sync now.
+function syncNow() {
+  if (!isConnected()) return Promise.resolve();
+  clearTimeout(sync.timer);
+  return enqueue(pullStep);
+}
+
+function pullStep() {
+  if (!isConnected()) return;
+  if (Date.now() < sync.retryAt) { scheduleRetry(); return; }
+  setSyncStatus('syncing');
+  var s = sync.settings;
+  return readGist(s.token, s.gistId).then(function (remote) {
+    if (remote.text === null) throw new GistError('notfound');
+    var parsed = parsePayloadText(remote.text);
+    if (!parsed.ok) { setSyncError('malformed'); return; } // GST-12
+    var action = decideSync(parsed.payload.updatedAt, s.lastLocalChangeAt, s.lastSyncedAt);
+    if (action === 'pull') return applyRemote(parsed.payload);
+    if (action === 'push') return pushStep();
+    setSyncStatus('synced');
+  }).catch(handleSyncFailure);
+}
+
+function pushStep() {
+  if (!isConnected()) return;
+  if (Date.now() < sync.retryAt) { scheduleRetry(); return; }
+  // GST-18: never write a list that fails validation.
+  if (!isValidLibrary(state.library)) { setSyncError('invalid'); return; }
+  setSyncStatus('syncing');
+  var s = sync.settings;
+  var updatedAt = s.lastLocalChangeAt || nextTimestamp(Date.now(), null);
+  var payload = wrapPayload(state.library, updatedAt);
+  return writeGist(s.token, s.gistId, payload).then(function () {
+    s.lastSyncedAt = updatedAt;
+    if (!s.lastLocalChangeAt) s.lastLocalChangeAt = updatedAt;
+    saveSyncSettings(s);
+    setSyncStatus('synced');
+  }).catch(handleSyncFailure);
+}
+
+// Replaces the working copy with the gist's newer list.
+function applyRemote(payload) {
+  var s = sync.settings;
+  state.library = payload.library;
+  writeLocalLibrary(state.library);
+  s.lastLocalChangeAt = payload.updatedAt;
+  s.lastSyncedAt = payload.updatedAt;
+  saveSyncSettings(s);
+  setSyncStatus('synced');
+  return refreshAfterLibraryChange().then(rerenderAfterSync);
+}
+
+function handleSyncFailure(err) {
+  var code = err && err.code ? err.code : 'server';
+  if (code === 'ratelimit') {
+    sync.retryAt = err.retryAt;
+    scheduleRetry();
+  }
+  setSyncError(code);
+}
+
+function scheduleRetry() {
+  clearTimeout(sync.timer);
+  sync.timer = setTimeout(syncNow, Math.max(1000, sync.retryAt - Date.now()));
+}
+
+function setSyncStatus(status) {
+  sync.status = status;
+  if (status !== 'error' && status !== 'offline') sync.errorCode = '';
+  if (status === 'synced') sync.retryAt = 0;
+  onSyncStateChanged();
+}
+
+function setSyncError(code) {
+  sync.errorCode = code;
+  sync.status = code === 'offline' ? 'offline' : 'error';
+  onSyncStateChanged();
+}
+
+// Becomes the connected state after Setup or Change token.
+function connect(settings) {
+  sync.settings = settings;
+  sync.errorCode = '';
+  sync.retryAt = 0;
+  sync.status = 'synced';
+  saveSyncSettings(settings);
+}
+
+// Disconnect (SYN-6): this device only; the gist is untouched.
+function disconnect() {
+  clearTimeout(sync.timer);
+  clearLocalData();
+  sync.settings = null;
+  sync.errorCode = '';
+  sync.status = 'synced';
+  state.library = [];
+  state.computed = {};
+  state.setup = freshSetupState();
+  state.view = 'setup';
+  render();
+}
+
+// ---------------------------------------------------------------------
+// 7. Rendering
+// ---------------------------------------------------------------------
+
+function freshSetupState() {
+  return { token: '', busy: false, error: '', choices: null, choiceId: null, invalidFound: false };
+}
+
+var state = {
+  view: 'loading', // setup | loading | list | add | detail | settings | sync | backup
+  library: [],
+  computed: {},     // showId -> { show, episodes, status }
+  segment: 'watching',
+  listQuery: '',
+  addFlow: null,
+  detailShowId: null,
+  errorBanner: '',
+  setup: freshSetupState(),
+  syncUi: { changingToken: false, token: '', busy: false, message: '' }
+};
+
+var root = document.getElementById('app');
+
+function render() {
+  renderToolbar();
+  if (state.view === 'setup') return renderSetup();
+  if (state.view === 'loading') return renderLoading();
+  if (state.view === 'add') return renderAdd();
+  if (state.view === 'detail') return renderDetail();
+  if (state.view === 'settings') return renderSettings();
+  if (state.view === 'sync') return renderSync();
+  if (state.view === 'backup') return renderBackup();
+  return renderList();
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+function stripHtml(html) {
+  if (!html) return '';
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
+}
+
+function formatDate(airdate) {
+  var d = new Date(airdate + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// --- Shared chrome ------------------------------------------------------
+
+var SYNC_LABELS = { synced: '✓ Synced', syncing: '⟳ Syncing…', offline: 'Offline', error: '⚠ Sync error' };
+
+function syncIndicatorHtml() {
+  return '<button class="sync-ind ' + sync.status + '" id="sync-indicator" aria-label="Sync status">' +
+    SYNC_LABELS[sync.status] + '</button>';
+}
+
+// Header on every connected screen: "My Shows" wordmark (home link, NAV-7)
+// and the always-visible sync indicator (OD-8).
+function appHeaderHtml() {
+  return '<div class="app-header"><button class="wordmark" id="home-link">My Shows</button>' + syncIndicatorHtml() + '</div>';
+}
+
+// Title row; sub-screens get a back arrow (NAV-8).
+function screenTitleHtml(title, withBack) {
+  return '<div class="screen-title">' +
+    (withBack ? '<button class="icon-btn" id="back-btn" aria-label="Back">&larr;</button>' : '') +
+    '<h1>' + escapeHtml(title) + '</h1></div>';
+}
+
+function bindChrome(onBack) {
+  var home = document.getElementById('home-link');
+  if (home) home.onclick = openList;
+  var ind = document.getElementById('sync-indicator');
+  if (ind) ind.onclick = openSync;
+  var back = document.getElementById('back-btn');
+  if (back && onBack) back.onclick = onBack;
+}
+
+// Updates only the indicator so a sync never rebuilds a screen the user
+// is typing in (iOS drops keyboard focus when an input is replaced).
+function onSyncStateChanged() {
+  var ind = document.getElementById('sync-indicator');
+  if (ind) {
+    ind.className = 'sync-ind ' + sync.status;
+    ind.textContent = SYNC_LABELS[sync.status];
+  }
+  var typing = document.activeElement && document.activeElement.tagName === 'INPUT';
+  if ((state.view === 'settings' || state.view === 'sync') && !typing) render();
+}
+
+// Bottom tool bar (NAV-1..6), hidden on Setup and while loading.
+function renderToolbar() {
+  var bar = document.getElementById('toolbar');
+  if (state.view === 'setup' || state.view === 'loading') {
+    bar.className = 'hidden';
+    bar.innerHTML = '';
+    return;
+  }
+  var active = { list: 'show', detail: 'show', add: 'add', settings: 'settings', sync: 'settings', backup: 'settings' }[state.view];
+  bar.className = '';
+  bar.innerHTML = '<div class="bar">' +
+    '<button id="tab-show" class="' + (active === 'show' ? 'active' : '') + '">▣ Show</button>' +
+    '<button id="tab-add" class="' + (active === 'add' ? 'active' : '') + '">＋ Add Show</button>' +
+    '<button id="tab-settings" class="' + (active === 'settings' ? 'active' : '') + '">⚙ Settings</button>' +
+    '</div>';
+  document.getElementById('tab-show').onclick = openList;
+  document.getElementById('tab-add').onclick = openAddFlow;
+  document.getElementById('tab-settings').onclick = openSettings;
+}
+
+var toastTimer = null;
+
+// Short confirmation above the tool bar (ADD-5).
+function showToast(message) {
+  var el = document.getElementById('toast');
+  el.textContent = '✓ ' + message;
+  el.className = 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.className = ''; }, 3000);
+}
+
+function renderLoading() {
+  root.innerHTML = '<div class="loading">Loading your shows…</div>';
+}
+
+// --- Setup (SYN-1..4, mockups 5.11, 5.13, 5.15) ---------------------------
+
+function renderSetup() {
+  var su = state.setup;
+  var html = '<div class="app-header"><span class="wordmark">My Shows</span></div>';
+
+  if (su.choices) {
+    html += screenTitleHtml('Choose your list', false);
+    html += '<p class="hint" style="font-size:14px;color:var(--text-secondary);">More than one My Shows list was found in your GitHub account. Choose the one to use.</p>';
+    su.choices.forEach(function (c) {
+      var count = c.payload.library.length;
+      html += '<label class="choice"><input type="radio" name="gist-choice" value="' + escapeHtml(c.id) + '"' + (su.choiceId === c.id ? ' checked' : '') + ' />' +
+        '<span>' + count + ' show' + (count === 1 ? '' : 's') + ' · updated ' + escapeHtml(formatDate(c.payload.updatedAt.slice(0, 10))) +
+        '<br><span class="row-sub">gist ' + escapeHtml(c.id.slice(0, 8)) + '…</span></span></label>';
+    });
+    html += '<p class="hint" style="margin-bottom:12px;">The others are left unchanged.</p>';
+    html += '<button class="primary" id="use-choice-btn"' + (su.choiceId && !su.busy ? '' : ' disabled') + '>' + (su.busy ? 'Loading…' : 'Use this list') + '</button>';
+    root.innerHTML = html;
+    document.querySelectorAll('input[name="gist-choice"]').forEach(function (r) {
+      r.onchange = function () { su.choiceId = r.value; renderSetup(); };
+    });
+    document.getElementById('use-choice-btn').onclick = useChosenGist;
+    return;
+  }
+
+  html += screenTitleHtml('Welcome', false);
+  html += '<p style="font-size:15px;line-height:1.6;margin:0 0 20px;">My Shows keeps your list in your own GitHub Gist so it’s the same on all your devices. Connect with a GitHub token to get started.</p>';
+  html += '<div class="field"><p class="field-label">Personal access token (classic, gist scope)</p>' +
+    '<input type="password" id="token-input" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + escapeHtml(su.token) + '" />' +
+    '<p class="hint">Paste it from your password manager or Notes. It is stored only on this device.</p></div>';
+  html += '<p style="margin:0 0 20px;"><a class="text-link" href="' + TOKEN_HELP_URL + '" target="_blank" rel="noopener">How to get a token ▸</a></p>';
+
+  if (su.invalidFound) {
+    html += '<p class="error-text">Your My Shows gist contains a file that isn’t a valid list. It was not changed.</p>';
+    html += '<button class="primary" id="start-new-btn" style="margin-top:12px;"' + (su.busy ? ' disabled' : '') + '>' + (su.busy ? 'Creating…' : 'Start a new gist') + '</button>';
+  } else {
+    html += '<button class="primary" id="connect-btn"' + (su.busy ? ' disabled' : '') + '>' + (su.busy ? 'Connecting…' : 'Connect') + '</button>';
+    if (su.error) html += '<p class="error-text" style="margin-top:12px;">⚠ ' + escapeHtml(su.error) + '</p>';
+  }
+  root.innerHTML = html;
+
+  document.getElementById('token-input').oninput = function (e) {
+    su.token = e.target.value;
+    if (su.invalidFound) { su.invalidFound = false; renderSetup(); document.getElementById('token-input').focus(); }
+  };
+  var connectBtn = document.getElementById('connect-btn');
+  if (connectBtn) connectBtn.onclick = connectFromSetup;
+  var startNew = document.getElementById('start-new-btn');
+  if (startNew) startNew.onclick = function () { createAndConnect(su.token.trim()); };
+}
+
+// Text for a failure during Setup or Change token.
+function setupErrorText(err) {
+  var code = err && err.code;
+  if (code === 'token' || code === 'scope') return 'Token not valid or missing the gist scope.';
+  if (code === 'offline') return 'Couldn’t reach GitHub. Check your connection and try again.';
+  if (code === 'ratelimit') return 'GitHub’s rate limit was reached. Try again in a few minutes.';
+  return 'GitHub returned an error' + (err && err.status ? ' (' + err.status + ')' : '') + '. Try again.';
+}
+
+// Connect: check the token, then find or create the My Shows gist (SYN-4).
+function connectFromSetup() {
+  var su = state.setup;
+  var token = su.token.trim();
+  if (!token) { su.error = 'Enter your token.'; renderSetup(); return; }
+  su.busy = true; su.error = '';
+  renderSetup();
+  checkToken(token)
+    .then(function () { return listCandidateGistIds(token); })
+    .then(function (ids) {
+      if (ids.length === 0) return createAndConnect(token);
+      return Promise.all(ids.map(function (id) { return readGist(token, id); })).then(function (candidates) {
+        var found = classifyCandidates(candidates);
+        su.busy = false;
+        if (found.valid.length === 1) return finishConnect(token, found.valid[0].id, found.valid[0].payload);
+        if (found.valid.length > 1) {
+          su.choices = found.valid;
+          su.choiceId = null;
+          renderSetup();
+          return;
+        }
+        su.invalidFound = true;
+        renderSetup();
+      });
+    })
+    .catch(function (err) {
+      su.busy = false;
+      su.error = setupErrorText(err);
+      renderSetup();
+    });
+}
+
+function useChosenGist() {
+  var su = state.setup;
+  var choice = (su.choices || []).find(function (c) { return c.id === su.choiceId; });
+  if (!choice) return;
+  finishConnect(su.token.trim(), choice.id, choice.payload);
+}
+
+// First device, or "Start a new gist": a new secret gist with an empty list.
+function createAndConnect(token) {
+  var su = state.setup;
+  su.busy = true; su.error = '';
+  renderSetup();
+  var payload = wrapPayload([], nextTimestamp(Date.now(), null));
+  return createGist(token, payload).then(function (gistId) {
+    return finishConnect(token, gistId, payload);
+  }).catch(function (err) {
+    su.busy = false;
+    su.error = setupErrorText(err);
+    su.invalidFound = false;
+    renderSetup();
+  });
+}
+
+// Stores the connection and loads the chosen list.
+function finishConnect(token, gistId, payload) {
+  connect({ gistId: gistId, token: token, lastSyncedAt: payload.updatedAt, lastLocalChangeAt: payload.updatedAt });
+  state.setup = freshSetupState();
+  state.library = payload.library;
+  state.computed = {};
+  writeLocalLibrary(state.library);
+  state.segment = 'watching';
+  state.view = 'loading';
+  render();
+  return refreshComputedFor(state.library).then(function () {
+    state.view = 'list';
+    render();
+  });
+}
+
+// --- Main display (LIST, SRCH) --------------------------------------------
+
+// Library items joined with their computed data, archive override applied.
+function currentEntries() {
+  return state.library.map(function (item) {
+    var c = state.computed[item.showId];
+    if (!c) return null;
+    return { item: item, show: c.show, status: withArchiveOverride(c.status, item.archived), availableOrder: item.availableOrder || 0 };
+  }).filter(Boolean);
+}
+
+var EMPTY_TEXT = {
+  watching: 'Nothing to watch right now.<br>Shows move here when a new episode airs.',
+  waiting: 'No shows waiting.<br>Shows you’re caught up on that are still in production appear here, along with any you suspend.',
+  done: 'No finished shows yet.<br>Shows move here once the series has ended and you’ve watched every episode.'
+};
+
+function renderList() {
+  var html = appHeaderHtml();
+  if (state.errorBanner) html += '<p class="error-text">' + escapeHtml(state.errorBanner) + '</p>';
+
+  if (state.library.length === 0) {
+    html += '<div class="empty">No shows yet.<br>Tap Add Show to add the first one.</div>';
+    root.innerHTML = html;
+    bindChrome();
+    return;
+  }
+
+  // The search input sits outside #list-body so typing never replaces it.
+  html += '<div class="search-box"><input type="search" id="list-search" placeholder="Search my shows" value="' + escapeHtml(state.listQuery) + '" /></div>';
+  html += '<div id="list-body"></div>';
+  root.innerHTML = html;
+  bindChrome();
+
+  document.getElementById('list-search').oninput = function (e) {
+    state.listQuery = e.target.value;
+    updateListBody();
+  };
+  updateListBody();
+}
+
+// Rebuilds the segment control and list (or search results) only.
+function updateListBody() {
+  var body = document.getElementById('list-body');
+  if (!body) return;
+  var entries = currentEntries();
+  var html = '';
+
+  if (state.listQuery.trim()) {
+    // SRCH-3/4: all segments, each row tagged with its group.
+    var results = searchEntries(entries, state.listQuery);
+    html += '<p class="section-label">Results in all groups</p>';
+    if (results.length === 0) {
+      html += '<div class="empty">No shows match "' + escapeHtml(state.listQuery.trim()) + '"</div>';
+    } else {
+      html += '<div class="card-list">' + results.map(function (e) { return renderRow(e, groupTagLabel(e.status)); }).join('') + '</div>';
+    }
+    body.innerHTML = html;
+    bindRows(results);
+    return;
+  }
+
+  var segments = buildSegments(entries);
+  var counts = segmentCounts(segments);
+  html += '<div class="segments" role="tablist">';
+  ['watching', 'waiting', 'done'].forEach(function (key) {
+    html += '<button role="tab" data-segment="' + key + '" class="' + (state.segment === key ? 'active' : '') + '">' +
+      SEGMENT_LABELS[key] + '<span class="count">' + counts[key] + '</span></button>';
+  });
+  html += '</div>';
+
+  var shown;
+  if (state.segment === 'waiting') {
+    shown = segments.waiting.concat(segments.suspended);
+    html += sectionHtml('Waiting for next episode or season', segments.waiting);
+    html += sectionHtml('Suspended', segments.suspended);
+  } else {
+    shown = segments[state.segment];
+    html += sectionHtml('', shown);
+  }
+  if (shown.length === 0) html += '<div class="empty">' + EMPTY_TEXT[state.segment] + '</div>';
+
+  body.innerHTML = html;
+  body.querySelectorAll('.segments button').forEach(function (b) {
+    b.onclick = function () { state.segment = b.getAttribute('data-segment'); updateListBody(); };
+  });
+  bindRows(shown);
+}
+
+// A titled card list; omitted entirely when empty (LIST-11).
+function sectionHtml(label, entries) {
+  if (entries.length === 0) return '';
+  return (label ? '<p class="section-label">' + label + '</p>' : '<div style="height:12px"></div>') +
+    '<div class="card-list">' + entries.map(function (e) { return renderRow(e); }).join('') + '</div>';
+}
+
+// One show row - same content as V1 (LIST-5), plus an optional group tag
+// for search results (SRCH-4).
+function renderRow(e, tag) {
+  var item = e.item, show = e.show, status = e.status;
+  var platformText = item.platform ? ' <span class="platform">- ' + escapeHtml(item.platform) + '</span>' : '';
+  var tagHtml = tag ? '<span class="group-tag">' + escapeHtml(tag) + '</span>' : '';
+  var titleHtml = '<p class="row-title">' + escapeHtml(show.name) + platformText + tagHtml + '</p>';
+
+  var subText;
+  if (status.archived) {
+    subText = 'Archived' + (item.archivedAt ? ' ' + formatDate(item.archivedAt) : '');
+  } else if (status.nextEpisode) {
+    subText = formatEpisodeCode(status.nextEpisode) + (status.nextEpisode.name ? ' - ' + escapeHtml(status.nextEpisode.name) : '');
+  } else if (status.group === 'completed') {
+    subText = 'All episodes watched';
+  } else {
+    subText = 'Renewed - no date yet';
+  }
+
+  var right = '';
+  if (status.group === 'available') {
+    right = '<button class="text" id="mark-' + item.showId + '">Mark watched</button>';
+  } else if (status.group === 'upcoming') {
+    right = '<span class="row-right">' + formatCountdown(status.daysUntil, status.nextEpisode.airdate) + '</span>';
+  } else if (status.archived) {
+    right = '<button class="text" id="reactivate-' + item.showId + '">Reactivate</button>';
+  }
+
+  return '<div class="row" id="row-' + item.showId + '">' +
+    '<div>' + titleHtml + '<p class="row-sub">' + subText + '</p></div>' +
+    '<div class="row-right">' + right + '</div>' +
+    '</div>';
+}
+
+function bindRows(entries) {
+  entries.forEach(function (e) {
+    var id = e.item.showId;
+    var rowEl = document.getElementById('row-' + id);
+    if (!rowEl) return;
+    rowEl.onclick = function () { openDetail(id); };
+    var markBtn = document.getElementById('mark-' + id);
+    if (markBtn) markBtn.onclick = function (ev) { ev.stopPropagation(); markWatched(id); };
+    var reactivateBtn = document.getElementById('reactivate-' + id);
+    if (reactivateBtn) reactivateBtn.onclick = function (ev) { ev.stopPropagation(); reactivateShow(id); };
+  });
+}
+
+// --- Show detail (DET-1: same as V1) ----------------------------------------
+
+function renderDetail() {
+  var item = state.library.find(function (i) { return i.showId === state.detailShowId; });
+  var c = state.computed[state.detailShowId];
+  if (!item || !c) { state.view = 'list'; return render(); }
+
+  var status = withArchiveOverride(c.status, item.archived);
+  var ep = status.nextEpisode;
+
+  var html = appHeaderHtml();
+  html += '<div class="top-bar"><button class="icon-btn" id="back-btn" aria-label="Back" style="padding-left:0;">&larr;</button></div>';
+
+  if (ep && ep.image && ep.image.medium) {
+    html += '<img class="episode-image" src="' + escapeHtml(ep.image.medium) + '" alt="" />';
+  }
+
+  html += '<h1 style="margin-bottom:2px;">' + escapeHtml(c.show.name) + '</h1>';
+
+  if (ep) {
+    html += '<p class="row-sub" style="margin-bottom:16px;">' + formatEpisodeCode(ep) + (ep.name ? ' - ' + escapeHtml(ep.name) : '') + '</p>';
+  } else if (status.archived) {
+    html += '<p class="row-sub" style="margin-bottom:16px;">Archived' + (item.archivedAt ? ' ' + formatDate(item.archivedAt) : '') + '</p>';
+  } else {
+    html += '<p class="row-sub" style="margin-bottom:16px;">' + (status.group === 'completed' ? 'All episodes watched' : 'Renewed - no date yet') + '</p>';
+  }
+
+  if (item.platform) {
+    html += '<p class="field-label">Watching on</p><p style="margin:0 0 16px; font-size:15px;">' + escapeHtml(item.platform) + '</p>';
+  }
+
+  if (ep) {
+    html += '<table class="detail-table">';
+    html += '<tr><td>Air date</td><td>' + (ep.airdate ? formatDate(ep.airdate) : 'Unannounced') + '</td></tr>';
+    if (ep.runtime) html += '<tr><td>Runtime</td><td>' + ep.runtime + ' min</td></tr>';
+    html += '<tr><td>Season</td><td>' + ep.season + '</td></tr>';
+    html += '<tr><td>Episodes left in season</td><td>' + episodesLeftInSeason(c.episodes, ep) + '</td></tr>';
+    var seasonsInfo = seasonsRemaining(c.episodes, ep);
+    html += '<tr><td>Seasons remaining</td><td>' + seasonsInfo.remaining + ' of ' + seasonsInfo.total + '</td></tr>';
+    html += '</table>';
+
+    var summary = stripHtml(ep.summary);
+    html += '<p class="field-label" style="margin-top:16px;">Synopsis</p>';
+    html += '<p class="synopsis">' + escapeHtml(summary || 'No synopsis available.') + '</p>';
+
+    if (status.group === 'available') {
+      html += '<button class="primary" id="mark-watched-btn">Mark watched</button>';
+    }
+  } else if (status.archived && item.archivedSnapshot) {
+    var snap = item.archivedSnapshot;
+    html += '<table class="detail-table">';
+    html += '<tr><td>Last watched</td><td>' + escapeHtml(snap.lastWatchedCode) + '</td></tr>';
+    html += '<tr><td>Episodes left in season</td><td>' + snap.episodesLeftInSeason + '</td></tr>';
+    html += '<tr><td>Seasons remaining</td><td>' + snap.seasonsRemaining.remaining + ' of ' + snap.seasonsRemaining.total + '</td></tr>';
+    html += '<tr><td>Archived on</td><td>' + (item.archivedAt ? formatDate(item.archivedAt) : 'Unknown') + '</td></tr>';
+    html += '</table>';
+  }
+
+  html += '<p style="margin-top:24px; text-align:center;">';
+  if (status.archived) {
+    html += '<a href="#" class="text-link" id="reactivate-link">Reactivate series</a>';
+  } else {
+    html += '<a href="#" class="text-link" id="end-series-link">Suspend series</a>';
+  }
+  html += ' &middot; <a href="#" class="remove-link" id="remove-link">Delete series</a></p>';
+
+  root.innerHTML = html;
+  bindChrome(openList);
+  var markBtn = document.getElementById('mark-watched-btn');
+  if (markBtn) markBtn.onclick = function () { markWatched(item.showId, true); };
+  document.getElementById('remove-link').onclick = function (ev) { ev.preventDefault(); removeShow(item.showId); };
+  var endLink = document.getElementById('end-series-link');
+  if (endLink) endLink.onclick = function (ev) { ev.preventDefault(); endSeries(item.showId); };
+  var reactivateLink = document.getElementById('reactivate-link');
+  if (reactivateLink) reactivateLink.onclick = function (ev) { ev.preventDefault(); reactivateShow(item.showId); };
+}
+
+// --- Add Show (ADD: V1 form, auto placement) --------------------------------
+
+function freshAddFlow() {
+  return { query: '', results: [], selected: null, platform: '', season: '', episode: '', error: '', searchStatus: 'idle', searchError: '', busy: false };
+}
+
+// "In Watching" etc. for a search result already in the library (ADD-6).
+function libraryLabelFor(showId) {
+  if (!state.library.some(function (i) { return i.showId === showId; })) return '';
+  var entry = currentEntries().find(function (e) { return e.item.showId === showId; });
+  if (!entry) return 'In your list';
+  var label = groupTagLabel(entry.status);
+  return label === 'Suspended' ? 'Suspended' : 'In ' + label;
+}
+
+function searchResultsHtml() {
+  var af = state.addFlow;
+  if (af.searchStatus === 'error') {
+    return '<p class="error-text" style="margin-top:10px;">Search failed: ' + escapeHtml(af.searchError) + '</p>';
+  }
+  if (af.searchStatus === 'empty') {
+    return '<p class="hint" style="margin-top:10px;">No shows found for "' + escapeHtml(af.query) + '".</p>';
+  }
+  if (af.results.length === 0) return '';
+
+  var html = '<div style="margin-top:10px;">';
+  af.results.forEach(function (r) {
+    var s = r.show;
+    var inLibrary = libraryLabelFor(s.id);
+    var selected = af.selected && af.selected.id === s.id;
+    var year = s.premiered ? s.premiered.slice(0, 4) : '';
+    var network = (s.network && s.network.name) || (s.webChannel && s.webChannel.name) || '';
+    html += '<div class="search-result' + (selected ? ' selected' : '') + (inLibrary ? ' in-library' : '') + '" data-id="' + s.id + '">';
+    html += s.image ? '<img src="' + escapeHtml(s.image.medium) + '" alt="" />' : '<div style="width:36px;height:50px;flex-shrink:0;"></div>';
+    html += '<div><p class="search-result-name">' + escapeHtml(s.name) + (inLibrary ? '<span class="group-tag">' + escapeHtml(inLibrary) + '</span>' : '') + '</p>';
+    html += '<p class="search-result-meta">' + escapeHtml([year, network].filter(Boolean).join(', ')) + '</p></div>';
+    html += '</div>';
+  });
+  return html + '</div>';
+}
+
+function bindSearchResultClicks() {
+  state.addFlow.results.forEach(function (r) {
+    var node = document.querySelector('.search-result[data-id="' + r.show.id + '"]');
+    if (!node || libraryLabelFor(r.show.id)) return;
+    node.onclick = function () { state.addFlow.selected = r.show; renderAddForm(); updateSearchResults(); };
+  });
+}
+
+// Updates only the results under the search input. Replacing the input
+// while typing makes iOS Safari drop focus (V1 lesson, kept).
+function updateSearchResults() {
+  var container = document.getElementById('search-results-container');
+  if (!container) return;
+  container.innerHTML = searchResultsHtml();
+  bindSearchResultClicks();
+}
+
+function renderAdd() {
+  var af = state.addFlow;
+  var html = appHeaderHtml();
+  html += screenTitleHtml('Add show', false);
+  html += '<p class="field-label">Search</p>';
+  html += '<input type="text" id="search-input" placeholder="Show title" value="' + escapeHtml(af.query) + '" />';
+  html += '<div id="search-results-container">' + searchResultsHtml() + '</div>';
+  html += '<div id="add-form"></div>';
+  root.innerHTML = html;
+  bindChrome();
+
+  var searchInput = document.getElementById('search-input');
+  var searchTimer = null;
+  searchInput.oninput = function (e) {
+    af.query = e.target.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () {
+      if (af.query.trim().length < 2) {
+        af.results = [];
+        af.searchStatus = 'idle';
+        updateSearchResults();
+        return;
+      }
+      searchShows(af.query).then(function (results) {
+        af.results = results.slice(0, 8);
+        af.searchStatus = af.results.length === 0 ? 'empty' : 'results';
+        updateSearchResults();
+      }).catch(function (err) {
+        af.results = [];
+        af.searchStatus = 'error';
+        af.searchError = (err && err.message) ? err.message : String(err);
+        updateSearchResults();
+      });
+    }, 350);
+  };
+  bindSearchResultClicks();
+  renderAddForm();
+}
+
+// Platform, last-watched and the Add button for the selected result.
+function renderAddForm() {
+  var af = state.addFlow;
+  var form = document.getElementById('add-form');
+  if (!form) return;
+  if (!af.selected) { form.innerHTML = ''; return; }
+  var html = '<div class="field" style="margin-top:16px;">';
+  html += '<p class="field-label">Watching on</p>';
+  html += '<input type="text" id="platform-input" placeholder="Hulu" value="' + escapeHtml(af.platform) + '" />';
+  html += '</div>';
+  html += '<p class="field-label">Last episode watched</p>';
+  html += '<div class="field-row">';
+  html += '<div class="field"><p class="hint" style="margin:0 0 4px;">Season</p><input type="number" id="season-input" min="0" value="' + escapeHtml(af.season) + '" /></div>';
+  html += '<div class="field"><p class="hint" style="margin:0 0 4px;">Episode</p><input type="number" id="episode-input" min="0" value="' + escapeHtml(af.episode) + '" /></div>';
+  html += '</div>';
+  html += '<p class="hint" style="margin-bottom:16px;">Leave blank if you have not started.</p>';
+  if (af.error) html += '<p class="error-text" style="margin-bottom:10px;">' + escapeHtml(af.error) + '</p>';
+  html += '<button class="primary" id="submit-add-btn"' + (af.busy ? ' disabled' : '') + '>' + (af.busy ? 'Adding…' : 'Add show') + '</button>';
+  form.innerHTML = html;
+
+  document.getElementById('platform-input').oninput = function (e) { af.platform = e.target.value; };
+  document.getElementById('season-input').oninput = function (e) { af.season = e.target.value; };
+  document.getElementById('episode-input').oninput = function (e) { af.episode = e.target.value; };
+  document.getElementById('submit-add-btn').onclick = submitAddShow;
+}
+
+function submitAddShow() {
+  var af = state.addFlow;
+  af.error = '';
+
+  if (state.library.some(function (i) { return i.showId === af.selected.id; })) {
+    af.error = 'That show is already in your library.';
+    renderAddForm();
+    return;
+  }
+
+  var hasSeason = af.season !== '' && af.season != null;
+  var hasEpisode = af.episode !== '' && af.episode != null;
+  if (hasSeason !== hasEpisode) {
+    af.error = 'Enter both season and episode, or leave both blank.';
+    renderAddForm();
+    return;
+  }
+
+  var newItem = {
+    showId: af.selected.id,
+    platform: af.platform.trim(),
+    watchedEpisodeId: null,
+    pendingSeasonNumber: hasSeason ? { season: parseInt(af.season, 10), number: parseInt(af.episode, 10) } : null
+  };
+  var name = af.selected.name;
+
+  state.library.push(newItem);
+  saveLibrary(state.library);
+  af.busy = true;
+  renderAddForm();
+
+  // ADD-3/ADD-5: place by computed status, then show that segment.
+  refreshComputedFor([newItem], { isNewAddition: true }).then(function () {
+    var c = state.computed[newItem.showId];
+    state.listQuery = '';
+    state.view = 'list';
+    if (c) {
+      state.segment = displaySegment(withArchiveOverride(c.status, newItem.archived));
+      render();
+      showToast(name + ' added to ' + SEGMENT_LABELS[state.segment]);
+    } else {
+      render();
+      showToast(name + ' added');
+    }
+  });
+}
+
+// --- Settings (SET-1) ---------------------------------------------------------
+
+function syncStatusLine() {
+  if (sync.status === 'synced') return 'Synced ' + formatSyncTime(sync.settings && sync.settings.lastSyncedAt, Date.now());
+  if (sync.status === 'syncing') return 'Syncing…';
+  if (sync.status === 'offline') return 'Offline';
+  return 'Sync error';
+}
+
+function renderSettings() {
+  var html = appHeaderHtml();
+  html += screenTitleHtml('Settings', false);
+  html += '<div class="card-list">';
+  html += '<button class="settings-row" id="settings-sync"><p class="row-title">Sync</p><p class="row-sub">' + escapeHtml(syncStatusLine()) + '</p></button>';
+  html += '<button class="settings-row" id="settings-backup"><p class="row-title">Backup &amp; restore</p></button>';
+  html += '<a class="settings-row" href="guide/"><p class="row-title">Guide</p></a>';
+  html += '<a class="settings-row" href="changelog/"><p class="row-title">Changelog</p></a>';
+  html += '</div>';
+  root.innerHTML = html;
+  bindChrome();
+  document.getElementById('settings-sync').onclick = openSync;
+  document.getElementById('settings-backup').onclick = openBackupFlow;
+}
+
+// --- Settings › Sync (SET-3, SYN-6, SYN-8, GST-10, mockup 5.12) ---------------
+
+function renderSync() {
+  var ui = state.syncUi;
+  var s = sync.settings;
+  var html = appHeaderHtml();
+  html += screenTitleHtml('Sync', true);
+
+  html += '<p class="status-line">' + (sync.status === 'synced' ? '✓ Connected' : escapeHtml(SYNC_LABELS[sync.status])) + '</p>';
+  html += '<p class="row-sub" style="margin-bottom:4px;">Gist ' + escapeHtml(s.gistId.slice(0, 8)) + '…</p>';
+  html += '<p class="hint" style="margin-bottom:16px;">Last synced: ' + escapeHtml(formatSyncTime(s.lastSyncedAt, Date.now())) + '</p>';
+  if (sync.errorCode) {
+    var retryText = sync.retryAt ? new Date(sync.retryAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    html += '<p class="error-text" id="sync-error-text" style="margin-bottom:16px;">' + escapeHtml(describeSyncError(sync.errorCode === 'scope' ? 'token' : sync.errorCode, retryText)) + '</p>';
+  }
+  if (ui.message) html += '<p class="hint" style="margin-bottom:12px;">' + escapeHtml(ui.message) + '</p>';
+
+  if (sync.errorCode === 'notfound') {
+    html += '<button class="wide" id="recreate-btn"' + (ui.busy ? ' disabled' : '') + '>Recreate gist</button>';
+  }
+  html += '<button class="wide" id="sync-now-btn"' + (ui.busy ? ' disabled' : '') + '>Sync now</button>';
+
+  if (ui.changingToken) {
+    html += '<div class="field" style="margin-top:8px;"><p class="field-label">New token (classic, gist scope)</p>' +
+      '<input type="password" id="new-token-input" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + escapeHtml(ui.token) + '" /></div>';
+    html += '<div class="field-row"><button class="wide" id="save-token-btn"' + (ui.busy ? ' disabled' : '') + '>' + (ui.busy ? 'Checking…' : 'Save token') + '</button>' +
+      '<button class="wide" id="cancel-token-btn">Cancel</button></div>';
+  } else {
+    html += '<button class="wide" id="change-token-btn">Change token</button>';
+  }
+  html += '<button class="wide danger" id="disconnect-btn" style="margin-top:16px;">Disconnect this device</button>';
+  html += '<p class="hint">Removes your list from this device only. It stays in your GitHub gist.</p>';
+
+  root.innerHTML = html;
+  bindChrome(openSettings);
+  document.getElementById('sync-now-btn').onclick = function () { ui.message = ''; syncNow(); };
+  var recreate = document.getElementById('recreate-btn');
+  if (recreate) recreate.onclick = recreateGist;
+  var change = document.getElementById('change-token-btn');
+  if (change) change.onclick = function () { ui.changingToken = true; ui.token = ''; ui.message = ''; renderSync(); };
+  var tokenInput = document.getElementById('new-token-input');
+  if (tokenInput) tokenInput.oninput = function (e) { ui.token = e.target.value; };
+  var save = document.getElementById('save-token-btn');
+  if (save) save.onclick = saveNewToken;
+  var cancel = document.getElementById('cancel-token-btn');
+  if (cancel) cancel.onclick = function () { ui.changingToken = false; ui.token = ''; renderSync(); };
+  document.getElementById('disconnect-btn').onclick = function () {
+    var ok = window.confirm('Disconnect this device?\n\nYour list will be removed from this device only. It stays in your GitHub gist, and connecting again with your token loads it back.');
+    if (ok) disconnect();
+  };
+}
+
+// Change token (SYN-8): the new token must reach the same gist.
+function saveNewToken() {
+  var ui = state.syncUi;
+  var token = ui.token.trim();
+  if (!token) return;
+  ui.busy = true; ui.message = '';
+  renderSync();
+  checkToken(token)
+    .then(function () { return readGist(token, sync.settings.gistId); })
+    .then(function () {
+      sync.settings.token = token;
+      saveSyncSettings(sync.settings);
+      sync.errorCode = '';
+      ui.busy = false; ui.changingToken = false; ui.token = '';
+      ui.message = 'Token updated.';
+      syncNow();
+      renderSync();
+    })
+    .catch(function (err) {
+      ui.busy = false;
+      ui.message = err && err.code === 'notfound'
+        ? 'This token can’t reach your My Shows gist. Use a token from the same GitHub account.'
+        : setupErrorText(err);
+      renderSync();
+    });
+}
+
+// GST-10: make a new gist from the list on this device.
+function recreateGist() {
+  var ui = state.syncUi;
+  var s = sync.settings;
+  ui.busy = true;
+  renderSync();
+  var updatedAt = nextTimestamp(Date.now(), s.lastLocalChangeAt);
+  var payload = wrapPayload(state.library, updatedAt);
+  enqueue(function () {
+    return createGist(s.token, payload).then(function (gistId) {
+      s.gistId = gistId;
+      s.lastLocalChangeAt = updatedAt;
+      s.lastSyncedAt = updatedAt;
+      saveSyncSettings(s);
+      ui.busy = false;
+      ui.message = 'A new gist was created from the list on this device.';
+      setSyncStatus('synced');
+    }).catch(function (err) {
+      ui.busy = false;
+      handleSyncFailure(err);
+    });
+  });
+}
+
+// --- Backup & restore (SET-2, DATA-7) -------------------------------------------
+
+function downloadBackupFile() {
+  var updatedAt = (sync.settings && sync.settings.lastLocalChangeAt) || nextTimestamp(Date.now(), null);
+  var data = JSON.stringify(wrapPayload(state.library, updatedAt), null, 2);
+  var blob = new Blob([data], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'my-shows-v2-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+function handleRestoreFile(file) {
+  var statusEl = document.getElementById('restore-status');
+  var reader = new FileReader();
+  reader.onload = function () {
+    var result = parsePayloadText(reader.result);
+    if (!result.ok) {
+      statusEl.innerHTML = '<p class="error-text">' + (result.reason === 'v1'
+        ? 'That is a My Shows V1 backup. V2 is a separate app and can’t import V1 lists.'
+        : 'That file does not look like a valid My Shows V2 backup.') + '</p>';
+      return;
+    }
+    var ok = window.confirm('Replace your list with this backup?\n\nEvery show currently in My Shows will be replaced by the ' +
+      result.payload.library.length + ' show(s) in the file, on all your devices once it syncs. This can’t be undone.');
+    if (!ok) return;
+    statusEl.innerHTML = '';
+    state.library = result.payload.library;
+    state.computed = {};
+    saveLibrary(state.library);
+    state.view = 'loading';
+    render();
+    refreshComputedFor(state.library).then(function () { state.view = 'list'; render(); });
+  };
+  reader.onerror = function () {
+    statusEl.innerHTML = '<p class="error-text">Could not read that file.</p>';
+  };
+  reader.readAsText(file);
+}
+
+function renderBackup() {
+  var html = appHeaderHtml();
+  html += screenTitleHtml('Backup & restore', true);
+  html += '<p class="field-label">Backup</p>';
+  html += '<p class="hint" style="margin-bottom:8px;">Your list is already kept in your GitHub gist. A backup file is an extra copy you control.</p>';
+  html += '<button id="download-backup-btn" style="width:100%;">Download backup file</button>';
+  html += '<p class="field-label" style="margin-top:28px;">Restore</p>';
+  html += '<p class="hint" style="margin-bottom:8px;">Pick a previously saved My Shows V2 backup file. V1 backups can’t be used.</p>';
+  html += '<input type="file" id="restore-file-input" accept="application/json,.json" style="display:none;" />';
+  html += '<button id="restore-file-btn" style="width:100%;">Choose backup file</button>';
+  html += '<div id="restore-status"></div>';
+  html += '<p class="hint" style="margin-top:8px;">Restoring replaces your whole list, on every device once it syncs.</p>';
+  root.innerHTML = html;
+  bindChrome(openSettings);
+  document.getElementById('download-backup-btn').onclick = downloadBackupFile;
+  document.getElementById('restore-file-btn').onclick = function () { document.getElementById('restore-file-input').click(); };
+  document.getElementById('restore-file-input').onchange = function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (file) handleRestoreFile(file);
+  };
+}
+
+// ---------------------------------------------------------------------
+// 8. Actions, data refresh, event wiring and init()
+// ---------------------------------------------------------------------
+
+function openList() { state.view = 'list'; render(); }
+function openSettings() { state.view = 'settings'; render(); }
+function openBackupFlow() { state.view = 'backup'; render(); }
+function openSync() {
+  state.syncUi = { changingToken: false, token: '', busy: false, message: '' };
+  state.view = 'sync';
+  render();
+}
+function openAddFlow() { state.addFlow = freshAddFlow(); state.view = 'add'; render(); }
+function openDetail(showId) { state.detailShowId = showId; state.view = 'detail'; render(); }
+
+function findItem(showId) { return state.library.find(function (i) { return i.showId === showId; }); }
+
+function markWatched(showId, fromDetail) {
+  var item = findItem(showId);
+  var c = state.computed[showId];
+  if (!item || !c || !c.status.nextEpisode) return;
+
+  item.watchedEpisodeId = c.status.nextEpisode.id;
+  c.status = computeShowStatus(c.show, c.episodes, item.watchedEpisodeId);
+  // Still available afterwards: move to the bottom of Watching (V1 rule).
+  if (c.status.group === 'available') item.availableOrder = nextBottomAvailableOrder(state.library);
+  saveLibrary(state.library);
+
+  if (fromDetail && !c.status.nextEpisode) state.view = 'list';
+  render();
+}
+
+// DET-3: immediate and permanent, as in V1.
+function removeShow(showId) {
+  state.library = state.library.filter(function (i) { return i.showId !== showId; });
+  delete state.computed[showId];
+  saveLibrary(state.library);
+  state.view = 'list';
+  render();
+}
+
+// Suspend (DET-2): flag + frozen snapshot; progress is untouched.
+function endSeries(showId) {
+  var item = findItem(showId);
+  var c = state.computed[showId];
+  if (!item || !c) return;
+  item.archived = true;
+  item.archivedAt = new Date().toISOString().slice(0, 10);
+  item.archivedSnapshot = buildArchiveSnapshot(c.episodes, item.watchedEpisodeId, c.status.nextEpisode);
+  saveLibrary(state.library);
+  state.view = 'list';
+  render();
+}
+
+function reactivateShow(showId) {
+  var item = findItem(showId);
+  if (!item) return;
+  item.archived = false;
+  delete item.archivedAt;
+  delete item.archivedSnapshot;
+  saveLibrary(state.library);
+  render();
+}
+
+// Loads TVmaze data for the given items and computes their status.
+// Resolves a typed season/episode into an episode id on first load.
+function refreshComputedFor(items, options) {
+  var isNewAddition = options && options.isNewAddition;
+  return Promise.all(items.map(function (item) {
+    return fetchShowWithEpisodes(item.showId).then(function (show) {
+      var episodes = sortedEpisodes(show._embedded && show._embedded.episodes ? show._embedded.episodes : []);
+      var changed = false;
+
+      if (item.pendingSeasonNumber) {
+        var resolvedId = findEpisodeIdBySeasonNumber(episodes, item.pendingSeasonNumber.season, item.pendingSeasonNumber.number);
+        if (resolvedId == null) {
+          state.errorBanner = 'Could not find season ' + item.pendingSeasonNumber.season + ' episode ' + item.pendingSeasonNumber.number + ' for ' + show.name + '. Starting from the beginning.';
+        }
+        item.watchedEpisodeId = resolvedId;
+        delete item.pendingSeasonNumber;
+        changed = true;
+      }
+
+      var status = computeShowStatus(show, episodes, item.watchedEpisodeId);
+      if (isNewAddition && status.group === 'available') {
+        item.availableOrder = nextTopAvailableOrder(state.library);
+        changed = true;
+      }
+      state.computed[item.showId] = { show: show, episodes: episodes, status: status };
+      // Only items still in the library are saved (a sync may have removed it).
+      if (changed && state.library.indexOf(item) !== -1) saveLibrary(state.library);
+    }).catch(function () {
+      state.errorBanner = 'Could not load data for one or more shows.';
+    });
+  }));
+}
+
+// After the library is replaced by a pull: recompute cached shows,
+// fetch any new ones, drop removed ones.
+function refreshAfterLibraryChange() {
+  var keep = {};
+  var missing = [];
+  state.library.forEach(function (item) {
+    keep[item.showId] = true;
+    var c = state.computed[item.showId];
+    if (c) c.status = computeShowStatus(c.show, c.episodes, item.watchedEpisodeId);
+    else missing.push(item);
+  });
+  Object.keys(state.computed).forEach(function (id) { if (!keep[id]) delete state.computed[id]; });
+  return refreshComputedFor(missing);
+}
+
+// Redraws after a pull, without touching screens with a focused input.
+function rerenderAfterSync() {
+  var typing = document.activeElement && document.activeElement.tagName === 'INPUT';
+  if (state.view === 'list') {
+    if (typing) updateListBody(); else render();
+  } else if (state.view === 'detail' || state.view === 'settings' || (state.view === 'sync' && !typing)) {
+    render();
+  }
+}
+
+// OD-11: mark when a text field has focus; CSS hides the tool bar on
+// touch screens, where that means the on-screen keyboard is open.
+function isTextField(el) {
+  return el && el.tagName === 'INPUT' && ['text', 'number', 'password', 'search'].indexOf(el.type) !== -1;
+}
+document.addEventListener('focusin', function (e) { if (isTextField(e.target)) document.body.classList.add('typing'); });
+document.addEventListener('focusout', function (e) { if (isTextField(e.target)) document.body.classList.remove('typing'); });
+
+// OD-6: pull whenever the app comes back to the foreground; also retry
+// when the connection returns.
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible' && isConnected() && !automaticSyncBlocked()) syncNow();
+});
+window.addEventListener('online', function () {
+  if (isConnected() && !automaticSyncBlocked()) syncNow();
+});
+
+function init() {
+  sync.settings = loadSyncSettings();
+  if (!isConnected()) {
+    state.view = 'setup';
+    render();
+    return;
+  }
+  // GST-3: render from the working copy at once, then pull.
+  state.library = loadLocalLibrary();
+  state.view = state.library.length ? 'loading' : 'list';
+  render();
+  refreshComputedFor(state.library).then(function () {
+    if (state.view === 'loading') state.view = 'list';
+    render();
+  });
+  syncNow();
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Changelog — My Shows V2</title>
+<meta name="description" content="What's changed in My Shows V2, newest first." />
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f7f7;
+    --border: #e0e0e0;
+    --text: #1a1a1a;
+    --text-secondary: #6b6b6b;
+    --text-muted: #9a9a9a;
+    --accent: #0a66c2;
+    --accent-bg: #e8f1fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212;
+      --surface: #1c1c1c;
+      --border: #333333;
+      --text: #f0f0f0;
+      --text-secondary: #a0a0a0;
+      --text-muted: #777777;
+      --accent: #6db2ff;
+      --accent-bg: #16283b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 48px 20px 80px;
+  }
+  .back-link { font-size: 14px; color: var(--text-secondary); text-decoration: none; }
+  .back-link:hover { text-decoration: underline; }
+  h1 { font-size: 28px; font-weight: 600; margin: 16px 0 6px; }
+  .subhead { font-size: 15px; color: var(--text-secondary); margin: 0 0 40px; }
+  .entry { margin-bottom: 36px; }
+  .entry-date {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin: 0 0 4px;
+  }
+  .entry h2 { font-size: 18px; font-weight: 600; margin: 0 0 10px; }
+  .entry ul { margin: 0; padding-left: 20px; }
+  .entry li { margin-bottom: 6px; font-size: 15px; }
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  a { color: var(--accent); }
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  footer a { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="back-link" href="/">&larr; My Shows</a>
+  <h1>Changelog</h1>
+  <p class="subhead">What's changed in My Shows V2, newest first.</p>
+
+  <div class="entry">
+    <p class="entry-date">October 25, 2026<span class="tag">Initial release</span></p>
+    <h2>My Shows V2 at v2.myshows.fyi</h2>
+    <ul>
+      <li>A separate app from My Shows V1 (myshows.fyi), which keeps working unchanged. Lists don't carry over from V1.</li>
+      <li>Automatic sync across your devices: your list is kept in your own secret GitHub Gist, created for you the first time you connect with a GitHub token.</li>
+      <li>Changes are saved on the device immediately and reach your gist about two seconds later; switching back to the app picks up changes made on your other devices.</li>
+      <li>The main screen shows one group at a time — Watching, Waiting or Done — with a count on each.</li>
+      <li>Waiting is split into "Waiting for next episode or season" and "Suspended". Done now holds only series that have ended and been watched in full.</li>
+      <li>Search your own list from the main screen, across every group.</li>
+      <li>New bottom bar: Show, Add Show and Settings. Backup &amp; restore, sync, the guide and this changelog are in Settings.</li>
+      <li>After adding a show you're taken to the group it landed in.</li>
+      <li>Sync status is always visible at the top right, with clear fixes for an expired token or a deleted gist.</li>
+    </ul>
+  </div>
+
+  <footer>
+    <p><a href="/guide/">How to use</a> &middot; <a href="https://github.com/CyberAdvisor/MyShows-v2" target="_blank" rel="noopener">Source on GitHub</a> &middot; <a href="https://github.com/CyberAdvisor/MyShows-v2/issues" target="_blank" rel="noopener">Report an issue</a></p>
+  </footer>
+
+</div>
+</body>
+</html>

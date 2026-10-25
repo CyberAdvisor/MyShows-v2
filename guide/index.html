@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>How to use My Shows V2</title>
+<meta name="description" content="How to connect My Shows V2 to your GitHub Gist, add shows, understand Watching, Waiting and Done, and suspend or delete a series." />
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f7f7;
+    --border: #e0e0e0;
+    --text: #1a1a1a;
+    --text-secondary: #6b6b6b;
+    --text-muted: #9a9a9a;
+    --accent: #0a66c2;
+    --accent-bg: #e8f1fb;
+    --danger: #c02020;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212;
+      --surface: #1c1c1c;
+      --border: #333333;
+      --text: #f0f0f0;
+      --text-secondary: #a0a0a0;
+      --text-muted: #777777;
+      --accent: #6db2ff;
+      --accent-bg: #16283b;
+      --danger: #ff6b6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+  }
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 48px 20px 80px;
+  }
+  .back-link { font-size: 14px; color: var(--text-secondary); text-decoration: none; }
+  .back-link:hover { text-decoration: underline; }
+  h1 { font-size: 30px; font-weight: 600; margin: 16px 0 6px; }
+  .subhead { font-size: 16px; color: var(--text-secondary); margin: 0 0 16px; }
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 24px 0 44px;
+    font-size: 15px;
+  }
+  .toc p { margin: 0 0 8px; font-weight: 500; color: var(--text-secondary); }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc li { margin-bottom: 4px; }
+  h2 { font-size: 22px; font-weight: 600; margin: 52px 0 12px; scroll-margin-top: 20px; }
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  a { color: var(--accent); }
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 34px;
+    margin-bottom: 14px;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .category-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+  }
+  .category-card h3 { margin: 0 0 4px; font-size: 16px; }
+  .category-card p { margin: 0; font-size: 14px; color: var(--text-secondary); }
+  .note {
+    background: var(--accent-bg);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+    color: var(--text);
+  }
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  footer a { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="back-link" href="/">&larr; My Shows</a>
+  <h1>How to use My Shows V2</h1>
+  <p class="subhead">Your list is kept in your own GitHub Gist, so it's the same on your iPhone, iPad and Mac.</p>
+
+  <p class="note">V2 is a separate app from My Shows V1 (myshows.fyi). Lists don't carry over between them, so if you're moving from V1 you'll add your shows again here. V1 keeps working as before.</p>
+
+  <div class="toc">
+    <p>On this page</p>
+    <ol>
+      <li><a href="#connecting">Connecting for the first time</a></li>
+      <li><a href="#other-devices">Your other devices</a></li>
+      <li><a href="#adding-a-show">Adding a show</a></li>
+      <li><a href="#the-three-groups">Watching, Waiting and Done</a></li>
+      <li><a href="#searching">Searching your list</a></li>
+      <li><a href="#suspending-a-show">Suspending a show</a></li>
+      <li><a href="#deleting-a-series">Deleting a series</a></li>
+      <li><a href="#sync">Sync status and fixing sync problems</a></li>
+    </ol>
+  </div>
+
+  <h2 id="connecting">Connecting for the first time</h2>
+  <ol class="steps">
+    <li>Create a classic GitHub token with only the <strong>gist</strong> scope (<a href="https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token" target="_blank" rel="noopener">step-by-step instructions</a>). Keep it in your password manager or Notes.</li>
+    <li>Open My Shows, paste the token and tap <strong>Connect</strong>.</li>
+    <li>My Shows creates a secret gist called <strong>My Shows V2</strong> in your GitHub account to hold your list. You don't need to create or name anything yourself.</li>
+  </ol>
+  <p>Don't delete that gist on GitHub: it <em>is</em> your list.</p>
+
+  <h2 id="other-devices">Your other devices</h2>
+  <p>On each other device, open My Shows, paste a token from the same GitHub account and tap <strong>Connect</strong>. The app finds your My Shows gist and loads your list.</p>
+  <ul>
+    <li>Every change is saved on the device straight away and reaches your gist about two seconds later.</li>
+    <li>When you switch back to My Shows on another device, it checks your gist and picks up the latest list.</li>
+    <li>If your account has more than one My Shows list, you'll be asked which one to use. Each is shown with its number of shows and when it was last updated.</li>
+  </ul>
+
+  <h2 id="adding-a-show">Adding a show</h2>
+  <ol class="steps">
+    <li>Tap <strong>Add Show</strong> in the bar at the bottom.</li>
+    <li>Search for the show by name. Results come from TVmaze's free database. Shows already in your list are marked with the group they're in.</li>
+    <li>Tap the show to select it.</li>
+    <li>Optionally note where you're watching it (Hulu, Netflix, whatever you use).</li>
+    <li>Enter the last season and episode you watched, or leave both blank if you haven't started.</li>
+    <li>Tap <strong>Add show</strong>. My Shows puts it in the right group for you and takes you there.</li>
+  </ol>
+
+  <h2 id="the-three-groups">Watching, Waiting and Done</h2>
+  <p>The three boxes at the top of the main screen show one group at a time, with the number of shows in each. Shows move between groups on their own as episodes air.</p>
+
+  <div class="category-card">
+    <h3>Watching</h3>
+    <p>The next episode you haven't watched has already aired. Tap "Mark watched" and it moves straight to the following episode.</p>
+  </div>
+  <div class="category-card">
+    <h3>Waiting</h3>
+    <p>Two sections. <strong>Waiting for next episode or season</strong>: you're caught up and the show is still in production; shows with a known air date come first, with a countdown. <strong>Suspended</strong>: shows you've paused (see below). The Waiting count includes both.</p>
+  </div>
+  <div class="category-card">
+    <h3>Done</h3>
+    <p>The series has ended and you've watched every episode. A show that has ended but still has episodes you haven't watched stays in Watching.</p>
+  </div>
+
+  <h2 id="searching">Searching your list</h2>
+  <p>Type in the search box at the top of the main screen. Results come from all three groups, each tagged with the group it's in. Clear the box to go back to the group you were looking at.</p>
+
+  <h2 id="suspending-a-show">Suspending a show</h2>
+  <p>Want to stop tracking a show without losing your place? Open the show and tap <strong>Suspend series</strong>.</p>
+  <ul>
+    <li>It moves into <strong>Waiting › Suspended</strong>, tagged "Archived" with today's date.</li>
+    <li>Your last watched episode and how many episodes/seasons were left are recorded at that moment.</li>
+    <li>Nothing is deleted.</li>
+  </ul>
+  <p>To pick it back up, tap <strong>Reactivate</strong> on its row (or "Reactivate series" on its detail screen). It returns to whichever group its progress puts it in.</p>
+
+  <h2 id="deleting-a-series">Deleting a series</h2>
+  <p>On the show's detail screen, <strong>Suspend series</strong> and <strong>Delete series</strong> sit next to each other.</p>
+  <p class="note">Tapping <strong>Delete series</strong> immediately removes the show and its watch history. There's no confirmation step and no undo, and within a few seconds it's gone from all your devices. If you might want the show back later, use Suspend instead.</p>
+
+  <h2 id="sync">Sync status and fixing sync problems</h2>
+  <p>The badge at the top right always shows the sync status. Tap it to open <strong>Settings › Sync</strong>.</p>
+  <ul>
+    <li><strong>Synced</strong> — your gist has your latest changes.</li>
+    <li><strong>Offline</strong> — changes are saved on this device and will be sent when you're back online.</li>
+    <li><strong>Sync error — token rejected</strong> — your token expired or was revoked. Create a new one and use <strong>Change token</strong>. The app keeps working in the meantime.</li>
+    <li><strong>Sync error — gist not found</strong> — the gist was deleted on GitHub. <strong>Recreate gist</strong> makes a new one from the list on this device.</li>
+  </ul>
+  <p><strong>Disconnect this device</strong> removes your token and list from this device only; your gist keeps the list and connecting again loads it back.</p>
+
+  <footer>
+    <p><a href="/changelog/">Changelog</a> &middot; <a href="https://github.com/CyberAdvisor/MyShows-v2" target="_blank" rel="noopener">Source on GitHub</a> &middot; <a href="https://github.com/CyberAdvisor/MyShows-v2/issues" target="_blank" rel="noopener">Report an issue</a></p>
+  </footer>
+
+</div>
+</body>
+</html>
