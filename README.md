@@ -19,7 +19,7 @@ Hosted at **https://v2.myshows.fyi**
 | Where your list is stored | This browser only | Your own GitHub Gist, synced to all your devices |
 | Multi-device | Manual backup file export/import | Automatic |
 | Requires | Nothing | A free GitHub account and a classic token with the `gist` scope |
-| Main screen | Available now / Upcoming / Pending return / Completed | Watching / Waiting / Done, with a count on each; Waiting is split into "Waiting for next episode or season" and "Suspended" |
+| Main screen | Available now / Upcoming / Pending return / Completed | Watching / Waiting / Done, with a count on each; Watching is split into "Currently running shows" and "Ended shows I'm binging"; Waiting is split into "Waiting for next episode or season" and "Suspended" |
 | Navigation | Header icons | Bottom tool bar: Show / Add Show / Settings |
 | Moving a list between them | Download a backup file | Restore a V1 backup file in Settings › Backup & restore (one-way, V1 → V2) |
 
@@ -29,7 +29,7 @@ Hosted at **https://v2.myshows.fyi**
 - **Say where you're up to** when you add a show: **Starting**, **Season/Episode last watched** (enter the season and episode), or **Caught Up** (the default — every aired episode is marked watched, handy for shows you're waiting on to return). The app figures out what's next and puts the show in the right group automatically, highlights it there, and confirms where it went
 - **Note where you're watching it** (Hulu, Netflix, whatever) — required when adding; shown next to the show name and on the episode detail screen
 - **Three groups**, each with a count:
-  - **Watching** — the next episode has already aired
+  - **Watching** — the next episode has already aired, in two sections: **Currently running shows** (newest release first) and **Ended shows I'm binging** (the one you just watched moves to the bottom)
   - **Waiting** — you're caught up and the show is still in production (with a countdown when the next air date is known), plus a separate **Suspended** section for shows you've paused
   - **Done** — the series has ended and you've watched every episode
 - **Search your list** from the top of the main screen; results cover all three groups and show which group each show is in

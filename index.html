@@ -441,7 +441,7 @@ var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
 var TVMAZE_API = 'https://api.tvmaze.com';
 var GITHUB_API = 'https://api.github.com';
 var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
-var APP_VERSION = '2.5.0';                   // VER-1: must match the newest changelog entry
+var APP_VERSION = '2.6.0';                   // VER-1: must match the newest changelog entry
 var CONFIRM_MS = 5000;                       // ADD-5: how long the add confirmation shows
 
 // === PURE LOGIC START ===
@@ -639,40 +639,34 @@ function groupTagLabel(status) {
 
 function compareByName(a, b) { return a.show.name.localeCompare(b.show.name); }
 
-// LIST-14 order within Watching. Tier 0: current (not ended) shows, newest
-// released episode first. Tier 1: ended shows, by availableOrder (the V1
-// sink rule: marked watched drops to the bottom, the rest move up).
-function compareWatching(a, b) {
-  var tierA = a.status.ended ? 1 : 0;
-  var tierB = b.status.ended ? 1 : 0;
-  if (tierA !== tierB) return tierA - tierB;
-  if (tierA === 0) {
-    var byDate = (b.status.latestAiredDate || '').localeCompare(a.status.latestAiredDate || '');
-    if (byDate) return byDate;
-  }
-  return (a.availableOrder || 0) - (b.availableOrder || 0);
-}
+// V1 sink order (availableOrder: added = top, marked watched = bottom).
+function compareAvailableOrder(a, b) { return (a.availableOrder || 0) - (b.availableOrder || 0); }
 
-// Splits entries ({ item, show, status, availableOrder }) into the four
-// lists the main display needs, each sorted:
-//   watching  - LIST-14: current shows first, newest released episode
-//               first; then ended shows in V1 sink order (availableOrder:
-//               added = top, marked watched = bottom)
+// Splits entries ({ item, show, status, availableOrder }) into the lists
+// the main display needs, each sorted. Watching is two sections (LIST-14):
+//   running   - TVmaze status not Ended: newest released episode first
+//   binging   - TVmaze status Ended: V1 sink order
+// Waiting is two sections (LIST-11):
 //   waiting   - soonest air date first, then "no date yet" shows A-Z (OD-12)
 //   suspended - A-Z
-//   done      - A-Z
+// and done is A-Z.
 function buildSegments(entries) {
-  var out = { watching: [], waiting: [], suspended: [], done: [] };
+  var out = { running: [], binging: [], waiting: [], suspended: [], done: [] };
   var upcoming = [], pending = [];
   entries.forEach(function (e) {
     var seg = segmentForStatus(e.status);
-    if (seg === 'waiting') {
+    if (seg === 'watching') {
+      out[e.status.ended ? 'binging' : 'running'].push(e);
+    } else if (seg === 'waiting') {
       (e.status.group === 'upcoming' ? upcoming : pending).push(e);
     } else {
       out[seg].push(e);
     }
   });
-  out.watching.sort(compareWatching);
+  out.running.sort(function (a, b) {
+    return (b.status.latestAiredDate || '').localeCompare(a.status.latestAiredDate || '') || compareAvailableOrder(a, b);
+  });
+  out.binging.sort(compareAvailableOrder);
   upcoming.sort(function (a, b) {
     return a.status.nextEpisode.airdate.localeCompare(b.status.nextEpisode.airdate) || compareByName(a, b);
   });
@@ -683,10 +677,11 @@ function buildSegments(entries) {
   return out;
 }
 
-// Counts for the three selection boxes. Waiting includes Suspended (OD-16).
+// Counts for the three selection boxes. Each counts both of its sections
+// (Waiting includes Suspended, OD-16).
 function segmentCounts(segments) {
   return {
-    watching: segments.watching.length,
+    watching: segments.running.length + segments.binging.length,
     waiting: segments.waiting.length + segments.suspended.length,
     done: segments.done.length
   };
@@ -1280,7 +1275,7 @@ function syncIndicatorHtml() {
     SYNC_LABELS[sync.status] + '</button>';
 }
 
-// "Version 2.5.0" under the wordmark, linking to the changelog (VER-1).
+// "Version 2.6.0" under the wordmark, linking to the changelog (VER-1).
 function versionLineHtml() {
   return '<a class="version-link" id="version-link" href="changelog/">Version ' + APP_VERSION + '</a>';
 }
@@ -1558,7 +1553,11 @@ function updateListBody() {
   html += '</div>';
 
   var shown;
-  if (state.segment === 'waiting') {
+  if (state.segment === 'watching') {
+    shown = segments.running.concat(segments.binging);
+    html += sectionHtml('Currently running shows', segments.running);
+    html += sectionHtml('Ended shows I\'m binging', segments.binging);
+  } else if (state.segment === 'waiting') {
     shown = segments.waiting.concat(segments.suspended);
     html += sectionHtml('Waiting for next episode or season', segments.waiting);
     html += sectionHtml('Suspended', segments.suspended);
@@ -1575,7 +1574,7 @@ function updateListBody() {
   bindRows(shown);
 }
 
-// A titled card list; omitted entirely when empty (LIST-11).
+// A titled card list; omitted entirely when empty (LIST-11, LIST-14).
 function sectionHtml(label, entries) {
   if (entries.length === 0) return '';
   return (label ? '<p class="section-label">' + label + '</p>' : '<div style="height:12px"></div>') +

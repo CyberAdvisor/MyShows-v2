@@ -93,7 +93,7 @@ Requirement IDs are stable; reference them in commits and tests.
 - **NAV-7** The **"My Shows" wordmark** in the header is a link that also returns to the main display, behaving identically to **Show**.
 - **NAV-8** Screens below the top level (show detail, sync setup, backup & restore) show a **back arrow** in the header that returns to the previous screen.
 - **NAV-9** Returning to the main display keeps the last-selected segment (see open decision **OD-13**).
-- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.5.0`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
+- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.6.0`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
 
 ### 4.2 Main display (Shows list)
 
@@ -117,10 +117,10 @@ Requirement IDs are stable; reference them in commits and tests.
 - **LIST-11** The Waiting segment shows its two sections in this order, each with a section heading: **Waiting for next episode or season**, then **Suspended**. A section with no shows is not displayed. Section 1 behaves the same as V1's waiting group.
 - **LIST-12** The Waiting count (LIST-4) includes both sections. See **OD-16**.
 - **LIST-13** A show that is no longer in production but still has unwatched episodes is in **Watching**, not Done.
-- **LIST-14** Watching is sorted in two tiers:
-  1. **Current shows** (TVmaze status anything other than `Ended`), by the air date of the show's **most recently released episode, newest first**, whether or not the user has reached it. No date limit.
-  2. **Ended shows** (TVmaze status `Ended`) the user is still working through, in the V1 sink order (`availableOrder`): a newly added show goes to the top of this tier; Mark watched moves a show that still has episodes waiting to the bottom, so the others move back up in turn.
-  Unaired episodes are never counted. A show moves tiers only if its TVmaze status changes.
+- **LIST-14** The Watching segment shows two sections, each with a section heading, in this order. A section with no shows is not displayed (as LIST-11).
+  1. **Currently running shows**: TVmaze status anything other than `Ended` (including "To Be Determined"), by the air date of the show's **most recently released episode, newest first**, whether or not the user has reached it. No date limit.
+  2. **Ended shows I'm binging**: TVmaze status `Ended`, in the V1 sink order (`availableOrder`): a newly added show goes to the top of this section; Mark watched moves a show that still has episodes waiting to the bottom, so the others move back up in turn.
+  Unaired episodes are never counted. A show moves between sections only if its TVmaze status changes. The Watching count (LIST-4) covers both sections. While searching, results are one list with group tags (SRCH-3/4), not sections.
 
 ### 4.3 Search (on the Shows screen)
 
@@ -196,19 +196,21 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │  ← wordmark = home link (NAV-7)
-│  Version 2.5.0                      │     sync indicator (SYN-5, OD-8); version (VER-1)
+│  Version 2.6.0                      │     sync indicator (SYN-5, OD-8); version (VER-1)
 │  ( 🔍 Search my shows            )  │
 │                                     │
 │ ┌───────────┬───────────┬─────────┐ │
 │ │●Watching 7│ Waiting 12│ Done 9  │ │  ← selection boxes + counts (LIST-1, LIST-4)
 │ └───────────┴───────────┴─────────┘ │
 │                                     │
+│  CURRENTLY RUNNING SHOWS            │  ← section 1 (LIST-14)
 │  ┌───────────────────────────────┐  │
 │  │  V1 show row (unchanged)      │  │  ← LIST-5: rows identical to V1
 │  └───────────────────────────────┘  │
 │  ┌───────────────────────────────┐  │
 │  │  V1 show row (unchanged)      │  │
 │  └───────────────────────────────┘  │
+│  ENDED SHOWS I'M BINGING            │  ← section 2 (LIST-14)
 │  ┌───────────────────────────────┐  │
 │  │  V1 show row (unchanged)      │  │
 │  └───────────────────────────────┘  │
@@ -305,7 +307,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │
-│  Version 2.5.0                      │  ← VER-1
+│  Version 2.6.0                      │  ← VER-1
 │  Add show                           │
 │  Search                             │
 │  ( shogun                        )  │
@@ -698,3 +700,4 @@ Items in the current design that could confuse users, to resolve or accept expli
 | 2026-10-25 | Version 2.3.0: V1 backup files can be restored into V2 (SET-4), replacing the list after confirmation like any restore; shows without a platform or in a very old V1 format are left out and listed with the reason. C-5, SET-2, ARC-6, DOC-1/2, U-14 and §12 updated. |
 | 2026-10-25 | Version 2.4.0: Watching order changed to two tiers (LIST-14): one episode waiting (newest aired first), then several waiting (V1 sink order). LIST-9 updated. |
 | 2026-10-25 | Version 2.5.0: Watching order (LIST-14) changed to current shows first, newest released episode first, then ended shows in V1 sink order. Replaces the 2.4.0 one-waiting / several-waiting tiers. |
+| 2026-10-25 | Version 2.6.0: Watching split into two headed sections, "Currently running shows" and "Ended shows I'm binging" (LIST-14), by TVmaze status; order within each unchanged from 2.5.0; mockup 5.1 updated. |

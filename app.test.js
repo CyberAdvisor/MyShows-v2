@@ -234,6 +234,16 @@ async function selectResult(env, query, showId) {
   env.doc.querySelector('.search-result[data-id="' + showId + '"]').click();
   await wait(5);
 }
+// Maps each section heading on the main display to the show names under it.
+function sectionTitles(env) {
+  const out = {};
+  env.doc.querySelectorAll('#list-body .section-label').forEach(label => {
+    const list = label.nextElementSibling;
+    out[label.textContent] = [...list.querySelectorAll('.row-title')].map(t => t.childNodes[0].textContent.trim());
+  });
+  return out;
+}
+
 function rowTitles(env) {
   return [...env.doc.querySelectorAll('.row-title')].map(el => el.childNodes[0].textContent.trim());
 }
@@ -1045,6 +1055,10 @@ async function testWatchingOrdering() {
   ] });
   assert.deepStrictEqual(rowTitles(env), ['The Bear', 'Severance', 'Fresh Show', 'Downton Abbey', 'Fleabag'],
     'current shows newest release first, then ended shows');
+  assert.deepStrictEqual(sectionTitles(env), {
+    'Currently running shows': ['The Bear', 'Severance', 'Fresh Show'],
+    "Ended shows I'm binging": ['Downton Abbey', 'Fleabag']
+  }, 'Watching is split into two headed sections (LIST-14)');
 
   // Watching an episode of an ended show drops it to the bottom; the other moves up.
   click(env, 'mark-251');

@@ -319,15 +319,15 @@ const TODAY = '2026-07-12';
     e('Zed Pending', { group: 'pending', nextEpisode: null }),
     e('Sooner', { group: 'upcoming', nextEpisode: { airdate: '2026-07-20' } }),
     e('Alpha Pending', { group: 'pending', nextEpisode: null }),
-    e('Top', { group: 'available', nextEpisode: {} }, -1),
-    e('Bottom', { group: 'available', nextEpisode: {} }, 2),
+    e('Top', { group: 'available', ended: true, nextEpisode: {} }, -1),
+    e('Bottom', { group: 'available', ended: true, nextEpisode: {} }, 2),
     e('Zulu Done', { group: 'completed', nextEpisode: null }),
     e('Able Done', { group: 'completed', nextEpisode: null }),
     e('Yankee Suspended', withArchiveOverride({ group: 'available', nextEpisode: {} }, true)),
     e('Bravo Suspended', withArchiveOverride({ group: 'pending', nextEpisode: null }, true))
   ];
   const seg = buildSegments(entries);
-  assert.deepStrictEqual(seg.watching.map(x => x.show.name), ['Top', 'Bottom'], 'several-waiting shows keep the V1 availableOrder sort');
+  assert.deepStrictEqual(seg.binging.map(x => x.show.name), ['Top', 'Bottom'], 'ended shows keep the V1 availableOrder sort');
   assert.deepStrictEqual(seg.waiting.map(x => x.show.name), ['Sooner', 'Later', 'Alpha Pending', 'Zed Pending'],
     'Waiting section 1: soonest air date first, then no-date shows A-Z (OD-12)');
   assert.deepStrictEqual(seg.suspended.map(x => x.show.name), ['Bravo Suspended', 'Yankee Suspended'], 'Suspended is A-Z');
@@ -426,9 +426,11 @@ const TODAY = '2026-07-12';
     w('Ended Middle', true, '2024-05-05', 0),
     w('Current Mid', false, '2026-03-01', -5)
   ]);
-  assert.deepStrictEqual(seg.watching.map(x => x.show.name),
-    ['Current New', 'Current Mid', 'Current Old', 'Ended Top', 'Ended Middle', 'Ended Bottom'],
-    'current shows first by newest released episode, then ended shows by sink order (not by date)');
+  assert.deepStrictEqual(seg.running.map(x => x.show.name), ['Current New', 'Current Mid', 'Current Old'],
+    'Currently running section: newest released episode first');
+  assert.deepStrictEqual(seg.binging.map(x => x.show.name), ['Ended Top', 'Ended Middle', 'Ended Bottom'],
+    'Ended section: sink order, not date');
+  assert.strictEqual(segmentCounts(seg).watching, 6, 'Watching count covers both sections');
 
   const eps = [
     { id: 1, season: 1, number: 1, airdate: '2026-06-01' },
