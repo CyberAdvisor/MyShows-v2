@@ -134,6 +134,15 @@
     color: var(--text);
     width: 100%;
   }
+  /* LIST-15: V1's "About My Shows & how to use" link under the list. */
+  .about-link {
+    display: block;
+    text-align: center;
+    margin: 36px 0 12px;
+    color: var(--text-muted);
+    font-size: 15px;
+    text-decoration: underline;
+  }
   .empty {
     text-align: center;
     color: var(--text-secondary);
@@ -441,7 +450,7 @@ var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
 var TVMAZE_API = 'https://api.tvmaze.com';
 var GITHUB_API = 'https://api.github.com';
 var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
-var APP_VERSION = '2.6.0';                   // VER-1: must match the newest changelog entry
+var APP_VERSION = '2.6.1';                   // VER-1: must match the newest changelog entry
 var CONFIRM_MS = 5000;                       // ADD-5: how long the add confirmation shows
 
 // === PURE LOGIC START ===
@@ -1275,7 +1284,7 @@ function syncIndicatorHtml() {
     SYNC_LABELS[sync.status] + '</button>';
 }
 
-// "Version 2.6.0" under the wordmark, linking to the changelog (VER-1).
+// "Version 2.6.1" under the wordmark, linking to the changelog (VER-1).
 function versionLineHtml() {
   return '<a class="version-link" id="version-link" href="changelog/">Version ' + APP_VERSION + '</a>';
 }
@@ -1498,13 +1507,16 @@ var EMPTY_TEXT = {
   done: 'No finished shows yet.<br>Shows move here once the series has ended and you’ve watched every episode.'
 };
 
+// LIST-15: link to the guide, shown at the bottom of the main display.
+var ABOUT_LINK_HTML = '<a class="about-link" id="about-link" href="guide/">About My Shows &amp; how to use</a>';
+
 function renderList() {
   var html = appHeaderHtml();
   if (state.errorBanner) html += '<p class="error-text">' + escapeHtml(state.errorBanner) + '</p>';
 
   if (state.library.length === 0) {
     html += '<div class="empty">No shows yet.<br>Tap Add Show to add the first one.</div>';
-    root.innerHTML = html;
+    root.innerHTML = html + ABOUT_LINK_HTML;
     bindChrome();
     return;
   }
@@ -1512,7 +1524,7 @@ function renderList() {
   // The search input sits outside #list-body so typing never replaces it.
   html += '<div class="search-box"><input type="search" id="list-search" placeholder="Search my shows" value="' + escapeHtml(state.listQuery) + '" /></div>';
   html += '<div id="list-body"></div>';
-  root.innerHTML = html;
+  root.innerHTML = html + ABOUT_LINK_HTML;
   bindChrome();
 
   document.getElementById('list-search').oninput = function (e) {

@@ -577,6 +577,28 @@ async function testVersionLine() {
   console.log('testVersionLine passed.');
 }
 
+async function testAboutLink() {
+  // LIST-15: V1's guide link under the list, on every segment and with an empty list.
+  let env = await start({ library: [] });
+  assert.strictEqual(text(env, '#about-link'), 'About My Shows & how to use', 'shown with no shows');
+  assert.strictEqual(env.doc.getElementById('about-link').getAttribute('href'), 'guide/', 'opens the guide');
+  env = await start({ library: mixedLibrary() });
+  for (const seg of ['watching', 'waiting', 'done']) {
+    clickSegment(env, seg);
+    await wait(5);
+    assert.ok(env.doc.getElementById('about-link'), 'shown on ' + seg);
+  }
+  const search = env.doc.getElementById('list-search');
+  search.value = 'zzz';
+  search.dispatchEvent(new env.window.Event('input'));
+  assert.ok(env.doc.getElementById('about-link'), 'shown under search results');
+  assert.ok(env.doc.getElementById('about-link').previousElementSibling.id === 'list-body', 'sits after the list');
+  click(env, 'tab-settings');
+  await wait(5);
+  assert.ok(!env.doc.getElementById('about-link'), 'main display only');
+  console.log('testAboutLink passed.');
+}
+
 // =====================================================================
 // Segments, search and navigation (LIST, SRCH, NAV, OD-11, OD-13)
 // =====================================================================
@@ -1143,6 +1165,7 @@ async function testEpisodesLeftOnDetail() {
     await testWhereAreYouUpTo();
     await testAddWhenDetailsCannotLoad();
     await testVersionLine();
+    await testAboutLink();
     await testSegmentsSearchAndNavigation();
     await testSuspendReactivateAndDelete();
     await testPullOnLoadAndOnResume();
