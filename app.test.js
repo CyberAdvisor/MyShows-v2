@@ -578,10 +578,12 @@ async function testVersionLine() {
 }
 
 async function testAboutLink() {
-  // LIST-15: V1's guide link under the list, on every segment and with an empty list.
+  // LIST-15: V1's README link under the list, on every segment and with an empty list.
   let env = await start({ library: [] });
   assert.strictEqual(text(env, '#about-link'), 'About My Shows & how to use', 'shown with no shows');
-  assert.strictEqual(env.doc.getElementById('about-link').getAttribute('href'), 'guide/', 'opens the guide');
+  const about = env.doc.getElementById('about-link');
+  assert.strictEqual(about.getAttribute('href'), 'https://github.com/CyberAdvisor/MyShows-v2#readme', 'opens the README');
+  assert.strictEqual(about.getAttribute('target'), '_blank', 'in a new tab, so the app stays open');
   env = await start({ library: mixedLibrary() });
   for (const seg of ['watching', 'waiting', 'done']) {
     clickSegment(env, seg);
@@ -596,6 +598,7 @@ async function testAboutLink() {
   click(env, 'tab-settings');
   await wait(5);
   assert.ok(!env.doc.getElementById('about-link'), 'main display only');
+  assert.ok(env.doc.querySelector('.settings-row[href="guide/"]'), 'Settings › Guide still opens the guide');
   console.log('testAboutLink passed.');
 }
 
