@@ -23,7 +23,11 @@
 - Fetch episodes with `/shows/:id/episodes?specials=1`. The `?embed=episodes` shortcut omits specials.
 - Every TVmaze request goes through `tvmazeGet()`, which paces requests to TVmaze’s rate limit and retries a 429 (CLAUDE.md LOAD-2). Never call `fetch` on TVmaze directly.
 - A show that fails to load must never disappear: `refreshComputedFor()` records it in `state.failed` (temporary or gone, LOAD-3) and the main display lists it by its stored `name` (LOAD-4). Failure state is never stored or synced.
-- A show name filled in by a load is written with `writeLocalLibrary()`, not `saveLibrary()`: it must not push or make this device look newer than the gist (LOAD-1).
+- A show name or last-watched code (`watchedCode`) filled in by a load is written with `writeLocalLibrary()`, not `saveLibrary()`: it must not push or make this device look newer than the gist (LOAD-1, LOAD-13). Keep `watchedCode` current with `rememberWatchedCode()` wherever progress changes.
+- Never treat a stored `watchedEpisodeId` that's missing from TVmaze's list as "not started": that show is a `changed` failure (LOAD-12).
+- "Today" is always `localDateString(new Date())`, never `toISOString()` (DATE-1): TVmaze air dates are local dates.
+- A missing or invalid local working copy must never be pushed (GST-20): `loadLocalLibrary()` reports it as damaged and `init()` makes the pull win.
+- Messages above the list go through `addNotice()` (MSG-1), never a single shared string.
 - Keep text inputs stable while results update (Add Show search, main-display search, Setup token, Change token). Replacing an input while typing loses focus on iOS Safari. Sync updates must only touch the header indicator or a results container, never rebuild a screen whose input has focus.
 - Preserve suspend ("archive") as an override layered on computed status, with a frozen snapshot, so reactivating is a flag flip.
 - Do not add a `<script>` tag after the main inline script. The tests extract it with a greedy regex; analytics and any other script tags belong in `<head>` before it.

@@ -2,7 +2,7 @@
 
 > **Status:** Approved for the V2 initial build (2026-10-25). Changes to scope still require Michael's approval.
 > **Repository:** `CyberAdvisor/MyShows-v2` (new, separate from V1's `CyberAdvisor/MyShows`), served at **v2.myshows.fyi**
-> **Last updated:** 2026-10-27 (2.7.0, show load failures, §4.8)
+> **Last updated:** 2026-10-27 (2.8.0, reliability fixes, §4.9)
 
 This file is the single source of truth for V2 scope. Claude must read it before any V2 work, must not build anything not described here, and must stop and ask when something is ambiguous or listed under [Open decisions](#10-open-decisions).
 
@@ -94,7 +94,7 @@ Requirement IDs are stable; reference them in commits and tests.
 - **NAV-7** The **"My Shows" wordmark** in the header is a link that also returns to the main display, behaving identically to **Show**.
 - **NAV-8** Screens below the top level (show detail, sync setup, backup & restore) show a **back arrow** in the header that returns to the previous screen.
 - **NAV-9** Returning to the main display keeps the last-selected segment (see open decision **OD-13**).
-- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.7.0`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
+- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.8.0`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
 
 ### 4.2 Main display (Shows list)
 
@@ -212,6 +212,22 @@ A show whose TVmaze data can't be loaded must never disappear silently. The user
 - **LOAD-10** **Search** (SRCH-2) includes failed shows by stored name, with the group tag **Couldn't load** (SRCH-4).
 - **LOAD-11** Temporary failures are tried again automatically on the next app load and whenever the app returns to the foreground (OD-6), in addition to Retry.
 
+### 4.9 Reliability fixes (2.8.0)
+
+Principle for these fixes: **the app always detects a problem and tells the user; it only repairs automatically when the problem is common or can't be fixed by hand.** Rare problems that deleting and re-adding the show fixes in under a minute get a clear message, not repair code (accepted in U-24).
+
+- **LOAD-12** **TVmaze changed a show's episodes.** If a show's stored `watchedEpisodeId` (not null) is not in TVmaze's episode list, the app does **not** treat the show as unstarted. It is a third failure kind, **changed**, listed in the Couldn't load section (LOAD-4) with `Episodes changed on TVmaze — tap to fix`, named in the banner (`Episodes changed on TVmaze: The Bear — tap it below to fix`), and not counted (LOAD-5). Its screen (LOAD-6) explains that the last episode watched can no longer be found, shows the last known episode code (LOAD-13), and offers **Delete series**, telling the user to add the show again with **Season/Episode last watched**. It is never repaired or deleted automatically, and Retry does not apply to it. It is checked again on every load (so a fix made on another device clears it after a sync).
+- **LOAD-13** **Last-watched code.** Library items carry an optional `watchedCode` (e.g. `S02E05`, `S02 Special`), the code of the last watched episode, kept up to date whenever progress changes and filled in on load like `name` (device only, LOAD-1). It is shown only for LOAD-12, so the user knows where they were; it is never used to find the episode.
+- **LOAD-14** **Freshness while the app stays open.** When the app returns to the foreground, every show's status is recomputed for today's date, and shows whose TVmaze data was loaded more than 12 hours ago are fetched again. While refetching, the show stays listed with its existing data.
+- **LOAD-15** **A failed refresh keeps the existing data.** If refetching a show that already has data fails, the show keeps its existing data and is not listed as failed. Only a show with no data at all goes in the Couldn't load section. The loading line (LOAD-8) counts only shows with no data yet.
+- **LOAD-16** **Request time limit.** A TVmaze request that hasn't answered within 20 seconds is abandoned and treated as a temporary failure (LOAD-3), so a show can't stay "loading" forever.
+- **DATE-1** **Local date.** "Today" (aired or not, countdowns, Caught Up, suspend date) is the device's local calendar date, not UTC. TVmaze air dates are local dates, so comparing with UTC made episodes airing tomorrow count as aired every evening in the Americas.
+- **GST-20** **Missing or damaged local copy.** If the device is connected but its local working copy is missing or fails validation at startup, the app starts with an empty list and **always pulls** from the gist (its last-change time is cleared), so the damaged copy can never be pushed over the gist. Deliberately deleting every show still syncs normally.
+- **MSG-1** **Messages.** Messages above the list (other than the load banner, LOAD-7) no longer overwrite each other. Each one stays until the user dismisses it (✕), except the save failure message (`Could not save on this device…`), which disappears by itself once a save succeeds. The same message is never listed twice.
+- **ADD-9** **Season/Episode not found** (ADD-8). If the typed season and episode don't exist on TVmaze, the show still starts from the beginning (accepted, U-25), and the message (MSG-1) says so and how to fix it: `Couldn't find season 9 episode 4 of The Bear on TVmaze, so it starts from the beginning. If that's wrong, delete it and add it again.`
+- **ADD-10** **Search errors in plain words.** A failed Add Show search says `Couldn't reach TVmaze. Check your connection and try again.` (no response), `TVmaze is busy. Wait a moment and try again.` (429), or `TVmaze returned an error. Try again.` (anything else), followed by the technical detail in brackets, e.g. `(Failed to fetch)`.
+- **DOC-4** The README's "What it does" screenshots include the Couldn't load list (`screenshots/couldnt-load.png`).
+
 ---
 
 ## 5. Screen mockups
@@ -223,7 +239,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │  ← wordmark = home link (NAV-7)
-│  Version 2.7.0                      │     sync indicator (SYN-5, OD-8); version (VER-1)
+│  Version 2.8.0                      │     sync indicator (SYN-5, OD-8); version (VER-1)
 │  ( 🔍 Search my shows            )  │
 │                                     │
 │ ┌───────────┬───────────┬─────────┐ │
@@ -334,7 +350,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │
-│  Version 2.7.0                      │  ← VER-1
+│  Version 2.8.0                      │  ← VER-1
 │  Add show                           │
 │  Search                             │
 │  ( shogun                        )  │
@@ -499,7 +515,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │
-│  Version 2.7.0                      │
+│  Version 2.8.0                      │
 │  ( 🔍 Search my shows            )  │
 │ ┌─────────────────────────────────┐ │
 │ │ Couldn't load: Slow Horses      │ │  ← banner (LOAD-7); Retry = temporary only
@@ -582,6 +598,7 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
   {
     showId: 251,              // TVmaze show id (required, integer, unique in the library)
     name: "Severance",        // TVmaze show name, optional; set on add and refreshed on every successful load (LOAD-1)
+    watchedCode: "S02E05",    // code of the last watched episode, optional; display only (LOAD-13, 2.8.0)
     platform: "Hulu",         // free text, may be ""
     watchedEpisodeId: 20865,  // TVmaze episode id of the last watched episode, or null
     pendingSeasonNumber: { season: 2, number: 8 },  // transient (Season/Episode last watched), resolved to watchedEpisodeId on first load
@@ -672,8 +689,8 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
 - **ARC-4** Every function has a short comment stating what it does, its inputs and its outputs. Section headers explain the section's job.
 - **ARC-5** Sync is hooked only at `saveLibrary()` (push), load (pull) and Setup (first connect). No other code path calls the gist client.
 - **ARC-6** V1 compatibility is limited to SET-4: one pure function (`splitV1Backup`) that splits a V1 backup into importable entries and listed skips. No reading of V1 storage keys and no conversion of old V1 formats.
-- **TST-1** Unit tests cover: status grouping (Watching / Waiting / Done), suspended override, sorting, search across groups, Add placement (ADD-3/ADD-4), last-write-wins decisions, payload wrap/unwrap and validation, identifying the My Shows gist in a gist list, each first-connect case (SYN-4), classifying TVmaze results (LOAD-3), counts excluding failed shows (LOAD-5), and validation of items with and without `name` (LOAD-1).
-- **TST-2** Integration tests (jsdom, mocked `fetch` and `localStorage`) cover: Setup shown on first launch and blocking the rest of the app, connect success and each connect error, tab navigation, segment switching and counts, search, both Add actions and toast, suspend/resume, delete, backup/restore in Settings, push on change, pull on load, offline use, token rejected after connect, disconnect, every failure in §7.3, and show load failures: the Couldn't load section and banner for temporary and gone shows, Retry, delete of a gone show, name stored and backfilled, pacing with the rate-limit retry, and the loading line (§4.8).
+- **TST-1** Unit tests cover: status grouping (Watching / Waiting / Done), suspended override, sorting, search across groups, Add placement (ADD-3/ADD-4), last-write-wins decisions, payload wrap/unwrap and validation, identifying the My Shows gist in a gist list, each first-connect case (SYN-4), classifying TVmaze results (LOAD-3), counts excluding failed shows (LOAD-5), validation of items with and without `name` (LOAD-1), the local date (DATE-1), lost progress and the last-watched code (LOAD-12, LOAD-13), staleness (LOAD-14) and search error wording (ADD-10).
+- **TST-2** Integration tests (jsdom, mocked `fetch` and `localStorage`) cover: Setup shown on first launch and blocking the rest of the app, connect success and each connect error, tab navigation, segment switching and counts, search, both Add actions and toast, suspend/resume, delete, backup/restore in Settings, push on change, pull on load, offline use, token rejected after connect, disconnect, every failure in §7.3, and show load failures: the Couldn't load section and banner for temporary and gone shows, Retry, delete of a gone show, name stored and backfilled, pacing with the rate-limit retry, and the loading line (§4.8); and the §4.9 fixes: changed episodes and their fix by sync, the last-watched code, the local date, recompute and refetch on return with existing data kept, the request time limit, a damaged local copy never pushed, messages that stack and dismiss, and plain search errors.
 - **TST-3** Fixtures are V2-only: a gist list with no My Shows gist (app creates one), with one valid My Shows gist, with one invalid My Shows gist, and with more than one.
 - **TST-4** All tests pass before any file is handed over.
 - **DOC-1** `README.md` opens with a short **"V2 vs V1"** section, before any setup steps, stating:
@@ -751,6 +768,8 @@ Items in the current design that could confuse users, to resolve or accept expli
 - **U-20 Unnamed failed shows (2.7.0).** Shows saved before 2.7.0 have no stored name until they load once. If one fails before that (e.g. a show TVmaze has already removed), it can only be shown as `TVmaze show #<id>` with its platform. The platform is usually enough to recognize it. After every show has loaded once under 2.7.0 this case no longer occurs.
 - **U-21 Counts exclude failed shows (2.7.0).** A segment's count drops by one while a show is failing (LOAD-5), which may read as a show going missing. The Couldn't load section at the top of every segment and the banner make it visible.
 - **U-22 Delete with no confirmation for gone shows (2.7.0).** Accepted, consistent with DET-3 and U-11: the user has been told the show is no longer on TVmaze before tapping Delete series.
+- **U-24 Delete and re-add instead of repair (2.8.0).** For rare problems (LOAD-12, ADD-9, and Caught Up resolved late after a failed add) the fix is to delete the show and add it again, which loses its suspended state and position in "Ended shows I'm binging". Accepted: these are rare, the app says what happened, and LOAD-13 tells the user which episode they were up to.
+- **U-25 Season/Episode not found starts from the beginning (2.8.0).** Accepted rather than refusing the add, because the check can only happen after TVmaze answers. The message (ADD-9) stays until dismissed so it isn't missed.
 - **U-23 Slower full load for large libraries (2.7.0).** Pacing (LOAD-2) means a large library takes longer to load completely, roughly one show per second beyond the first ten. Rows and counts fill in as shows arrive, and the loading line (LOAD-8) says how many are left.
 
 ---
@@ -799,3 +818,4 @@ Items in the current design that could confuse users, to resolve or accept expli
 | 2026-10-25 | `sitemap.xml` and `robots.txt` added for search engines (DEP-8, ARC-1). No app change. |
 | 2026-10-25 | Version 2.6.3: search-result description added to the main page; DEP-8 requires one on every sitemap page. |
 | 2026-10-27 | Version 2.7.0: show load failures (§4.8, LOAD-1 to LOAD-11). Show names stored (DATA-2 `name`); TVmaze requests paced with an automatic retry when rate-limited; failures classified as temporary or gone (404); failed shows listed by name in a Couldn't load section at the top of every segment and in the banner, not counted in segments; Retry for temporary failures, Delete series (as DET-3) for gone shows; no automatic deletes; loading line. Glossary, ARC-3, TST-1, TST-2 updated; mockups 5.16 and 5.17; U-20 to U-23. Replaces the fixed message `Could not load data for one or more shows.`, which named no show and hid the failed one. Implementation details settled in the build: names filled in by a load are saved on the device only (LOAD-1); a successful Retry returns to the show's segment with a toast (LOAD-6); no full-screen loading wait except V1 import (LOAD-8); shows already loading are not fetched again after a pull, and a load finishing after a pull computes with the current item. |
+| 2026-10-27 | Version 2.8.0: reliability fixes (§4.9). Changed episodes on TVmaze are detected instead of resetting progress (LOAD-12, `watchedCode` LOAD-13, fixed by delete and re-add); statuses recomputed and data older than 12 h refetched on return to the app (LOAD-14); a failed refresh keeps existing data (LOAD-15); 20 s request time limit (LOAD-16); local date instead of UTC (DATE-1); a missing or damaged local copy always pulls and can't be pushed (GST-20); messages no longer overwrite each other (MSG-1); clearer Season/Episode-not-found and search error messages (ADD-9, ADD-10); README screenshot of the Couldn't load list (DOC-4). Caught Up resolved late is accepted (U-24). |

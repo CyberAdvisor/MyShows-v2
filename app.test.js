@@ -1083,6 +1083,7 @@ async function testSearchErrorVisibility() {
   type(env, 'search-input', 'Downton');
   await wait(400);
   assert.ok(text(env, '.error-text').includes('Failed to fetch'), 'the real error is shown');
+  assert.ok(text(env, '.error-text').startsWith('Couldn’t reach TVmaze'), 'in plain words first (ADD-10)');
   console.log('testSearchErrorVisibility passed.');
 }
 
@@ -1386,7 +1387,184 @@ async function testTvmazePacingDefaults() {
   assert.strictEqual(env.window.TVMAZE_WINDOW_MS, 10000, '...per 10 seconds (LOAD-2)');
   assert.strictEqual(env.window.TVMAZE_RETRY_MS, 10000, 'wait 10 s after a 429 without Retry-After');
   assert.strictEqual(env.window.TVMAZE_429_RETRIES, 2);
+  assert.strictEqual(env.window.TVMAZE_TIMEOUT_MS, 20000, '20 s request time limit (LOAD-16)');
+  assert.strictEqual(env.window.STALE_AFTER_MS, 12 * 3600 * 1000, 'refetch data older than 12 hours (LOAD-14)');
   console.log('testTvmazePacingDefaults passed.');
+}
+
+// =====================================================================
+// Reliability fixes (CLAUDE.md §4.9)
+// =====================================================================
+
+async function testChangedEpisodesAreNotReset() {
+  // LOAD-12: The Bear's stored episode (9999) is no longer on TVmaze.
+  const lost = { showId: 501, name: 'The Bear', platform: 'Hulu', watchedEpisodeId: 9999, watchedCode: 'S03E10' };
+  const env = await start({ library: [lost, { showId: 777, platform: '', watchedEpisodeId: 7001 }] });
+  await wait(60);
+  assert.deepStrictEqual(failedRowTitles(env), ['The Bear'], 'listed under Couldn’t load, not reset to the start');
+  assert.ok(text(env, '#row-501').includes('Episodes changed on TVmaze — tap to fix'));
+  assert.ok(text(env, '#load-banner').includes('Episodes changed on TVmaze: The Bear'));
+  assert.ok(!env.doc.getElementById('retry-failed-btn'), 'Retry does not apply');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting1', 'Done0'], 'not counted');
+  assert.strictEqual(storedLibrary(env)[0].watchedEpisodeId, 9999, 'progress left exactly as it was');
+  assert.strictEqual(env.gh.writes().length, 0, 'nothing pushed');
+
+  click(env, 'row-501');
+  await wait(5);
+  assert.ok(text(env, '#failed-message').includes('last episode you watched can no longer be found'));
+  assert.strictEqual(text(env, '#last-watched-code'), 'S03E10', 'shows where they were (LOAD-13)');
+  assert.ok(env.doc.getElementById('failed-delete-btn') && !env.doc.getElementById('failed-retry-btn'));
+
+  // Fixed on another device (deleted and re-added): a pull clears it.
+  const gist = env.gh.content(env.gistId);
+  gist.library[0] = { showId: 501, name: 'The Bear', platform: 'Hulu', watchedEpisodeId: 1002 };
+  gist.updatedAt = '2026-07-12T13:00:00.000Z';
+  env.gh.gists[env.gistId].files['myshows.json'].content = JSON.stringify(gist);
+  click(env, 'back-btn');
+  env.doc.dispatchEvent(new env.window.Event('visibilitychange'));
+  await wait(80);
+  assert.deepStrictEqual(failedRowTitles(env), [], 'no longer listed as changed');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting1', 'Done0']);
+  console.log('testChangedEpisodesAreNotReset passed.');
+}
+
+async function testWatchedCodeIsKept() {
+  // LOAD-13: filled in on load (device only), updated with progress (synced).
+  const env = await start({ library: [{ showId: 501, platform: 'Hulu', watchedEpisodeId: 1002 }] });
+  await wait(60);
+  assert.strictEqual(storedLibrary(env)[0].watchedCode, 'S04E02', 'filled in on load');
+  assert.strictEqual(env.gh.writes().length, 0, 'without pushing');
+  click(env, 'mark-501');
+  await wait(80);
+  assert.strictEqual(env.gh.content(env.gistId).library[0].watchedCode, 'S04E03', 'Mark watched updates it, and it syncs');
+  clickSegment(env, 'waiting'); // caught up: next episode airs in August
+  click(env, 'row-501');
+  await wait(5);
+  click(env, 'prev-episode-btn');
+  await wait(5);
+  assert.strictEqual(storedLibrary(env)[0].watchedCode, 'S04E02', 'Previous episode updates it');
+  console.log('testWatchedCodeIsKept passed.');
+}
+
+async function testTodayIsTheLocalDate() {
+  // DATE-1: 9 PM on July 12 in Denver is already July 13 in UTC. An
+  // episode airing July 13 is "Tomorrow", not ready to watch.
+  const savedTz = process.env.TZ;
+  process.env.TZ = 'America/Denver';
+  try {
+    const tomorrowEp = { id: 42002, season: 1, number: 2, name: 'Next', airdate: '2026-07-13', runtime: 50 };
+    const tvmaze = url => {
+      const m = url.match(/\/shows\/4242(\/episodes\?specials=1)?$/);
+      if (!m) return null;
+      return Promise.resolve(response(200, m[1] ? slowHorses.episodes.concat([tomorrowEp]) : Object.assign({}, slowHorses.info)));
+    };
+    const env = await start({ library: [{ showId: 4242, platform: 'Apple TV+', watchedEpisodeId: 42001 }], tvmaze });
+    freezeDate(env.window, '2026-07-13T03:00:00Z');
+    env.doc.dispatchEvent(new env.window.Event('visibilitychange')); // recompute for "now" (LOAD-14)
+    await wait(40);
+    assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting1', 'Done0'], 'not ready to watch yet');
+    clickSegment(env, 'waiting');
+    assert.ok(text(env, '#row-4242').includes('Tomorrow'), 'counts down from the local date');
+  } finally {
+    if (savedTz === undefined) delete process.env.TZ; else process.env.TZ = savedTz;
+  }
+  console.log('testTodayIsTheLocalDate passed.');
+}
+
+async function testReturnRefreshesStatusAndOldData() {
+  // LOAD-14: back in the app on a later day, Severance's next episode has
+  // aired, so it moves to Watching without a reload.
+  // (Data counts as fresh here, so only the recompute is tested.)
+  let env = await start({ library: [{ showId: 777, platform: '', watchedEpisodeId: 7001 }], constants: { STALE_AFTER_MS: 1e12 } });
+  await wait(40);
+  assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting1', 'Done0']);
+  freezeDate(env.window, '2026-09-02T12:00:00');
+  env.doc.dispatchEvent(new env.window.Event('visibilitychange'));
+  await wait(40);
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting0', 'Done0'], 'recomputed for today');
+  assert.strictEqual(env.tvmazeLog.length, 2, 'fresh data is not fetched again');
+
+  // Old data is refetched; if that fails, the show keeps its data (LOAD-15).
+  let failRefresh = false;
+  env = await start({ library: [{ showId: 777, platform: '', watchedEpisodeId: 7001 }],
+    constants: { STALE_AFTER_MS: -1 }, tvmaze: url => (failRefresh && /\/shows\/777/.test(url)) ? Promise.reject(new TypeError('Load failed')) : null });
+  await wait(40);
+  failRefresh = true;
+  env.doc.dispatchEvent(new env.window.Event('visibilitychange'));
+  await wait(60);
+  assert.strictEqual(env.tvmazeLog.length, 4, 'old data fetched again');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting1', 'Done0'], 'still listed with its existing data');
+  assert.deepStrictEqual(failedRowTitles(env), [], 'not moved to Couldn’t load');
+  assert.ok(!env.doc.getElementById('load-banner'));
+  console.log('testReturnRefreshesStatusAndOldData passed.');
+}
+
+async function testRequestTimeLimit() {
+  // LOAD-16: a request that never answers becomes a temporary failure.
+  const env = await start({ library: [{ showId: 4242, name: 'Slow Horses', platform: 'Apple TV+', watchedEpisodeId: null }],
+    constants: { TVMAZE_TIMEOUT_MS: 40 }, tvmaze: url => /\/shows\/4242/.test(url) ? new Promise(() => {}) : null });
+  await wait(100);
+  assert.deepStrictEqual(failedRowTitles(env), ['Slow Horses'], 'listed as couldn’t load');
+  assert.ok(text(env, '#row-4242').includes('tap to retry'), 'temporary');
+  assert.ok(!env.doc.getElementById('loading-line'), 'no longer loading');
+  console.log('testRequestTimeLimit passed.');
+}
+
+async function testDamagedLocalCopyIsNeverPushed() {
+  // GST-20: the device thinks it has the newest change, but its copy is
+  // damaged. It must pull the gist, not push an empty list over it.
+  const library = [{ showId: 501, platform: 'Hulu', watchedEpisodeId: 1002 }, { showId: 777, platform: '', watchedEpisodeId: 7001 }];
+  const gh = makeGitHub();
+  const gistId = gh.addGist(payload(library));
+  const env = await start({ gh, library, gistId, localLibrary: [{ showId: 'damaged' }],
+    settings: { gistId, token: 'good', lastSyncedAt: T0, lastLocalChangeAt: '2026-07-12T11:00:00.000Z' } });
+  await wait(100);
+  assert.strictEqual(gh.writes().length, 0, 'nothing pushed');
+  assert.strictEqual(gh.content(gistId).library.length, 2, 'gist unchanged');
+  assert.deepStrictEqual(storedLibrary(env).map(i => i.showId), [501, 777], 'device reloaded from the gist');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting1', 'Done0']);
+  console.log('testDamagedLocalCopyIsNeverPushed passed.');
+}
+
+async function testMessagesStackAndDismiss() {
+  // MSG-1 / ADD-9: two not-found messages don't overwrite each other.
+  const env = await start({ library: [
+    { showId: 501, platform: 'Hulu', watchedEpisodeId: null, pendingSeasonNumber: { season: 9, number: 4 } },
+    { showId: 777, platform: '', watchedEpisodeId: null, pendingSeasonNumber: { season: 7, number: 1 } }] });
+  await wait(80);
+  const notices = () => [...env.doc.querySelectorAll('.notice p')].map(p => p.textContent);
+  assert.strictEqual(notices().length, 2, 'both messages shown');
+  assert.ok(notices().some(n => n === 'Couldn’t find season 9 episode 4 of The Bear on TVmaze, so it starts from the beginning. If that’s wrong, delete it and add it again.'));
+  env.doc.querySelector('.notice-dismiss').click();
+  assert.strictEqual(notices().length, 1, 'dismissing removes one');
+  clickSegment(env, 'waiting');
+  assert.strictEqual(notices().length, 1, 'the other stays until dismissed');
+
+  // The save message clears itself once a save works again.
+  const proto = env.window.Storage.prototype;
+  const realSetItem = proto.setItem;
+  proto.setItem = function () { throw new Error('QuotaExceededError'); };
+  clickSegment(env, 'watching');
+  click(env, 'mark-501');
+  await wait(5);
+  assert.ok(env.doc.getElementById('save-failed'), 'save failure shown');
+  proto.setItem = realSetItem;
+  click(env, 'mark-501');
+  await wait(5);
+  assert.ok(!env.doc.getElementById('save-failed'), 'gone after a successful save');
+  console.log('testMessagesStackAndDismiss passed.');
+}
+
+async function testSearchErrorsInPlainWords() {
+  // ADD-10: 429 after the automatic retries.
+  const env = await start({ library: [], constants: { TVMAZE_RETRY_MS: 5 },
+    tvmaze: url => url.includes('/search/shows') ? Promise.resolve(response(429, {})) : null });
+  click(env, 'tab-add');
+  await wait(10);
+  type(env, 'search-input', 'Downton');
+  await wait(450);
+  assert.strictEqual(text(env, '.error-text'), 'TVmaze is busy. Wait a moment and try again. (TVmaze returned 429)');
+  console.log('testSearchErrorsInPlainWords passed.');
 }
 
 (async () => {
@@ -1431,6 +1609,14 @@ async function testTvmazePacingDefaults() {
     await testRateLimitedShowIsRetried();
     await testTvmazePacing();
     await testTvmazePacingDefaults();
+    await testChangedEpisodesAreNotReset();
+    await testWatchedCodeIsKept();
+    await testTodayIsTheLocalDate();
+    await testReturnRefreshesStatusAndOldData();
+    await testRequestTimeLimit();
+    await testDamagedLocalCopyIsNeverPushed();
+    await testMessagesStackAndDismiss();
+    await testSearchErrorsInPlainWords();
     console.log('All app integration tests passed.');
     openWindows.forEach(w => w.close());
   } catch (err) {

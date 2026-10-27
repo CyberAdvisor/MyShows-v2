@@ -26,8 +26,67 @@ const {
   isValidLibraryItem, isValidLibrary, wrapPayload, isValidPayload, parsePayloadText,
   decideSync, nextTimestamp, findCandidateGistIds, classifyCandidates, describeSyncError, formatSyncTime,
   lastAiredEpisodeId, APP_VERSION, stepWatchedEpisode, splitV1Backup, V1_SKIP_REASONS,
-  classifyLoadFailure, storedShowName, rememberShowName, buildFailedEntries, throttleDelay
+  classifyLoadFailure, storedShowName, rememberShowName, buildFailedEntries, throttleDelay,
+  localDateString, progressLost, rememberWatchedCode, isStale, searchErrorText
 } = L;
+
+// =====================================================================
+// Reliability fixes (§4.9)
+// =====================================================================
+
+// --- DATE-1: today is the local date, not UTC ---
+{
+  const savedTz = process.env.TZ;
+  process.env.TZ = 'America/Denver';
+  const evening = new Date('2026-07-13T03:00:00Z'); // 9 PM on July 12 in Denver
+  assert.strictEqual(evening.toISOString().slice(0, 10), '2026-07-13', 'UTC is already tomorrow');
+  assert.strictEqual(localDateString(evening), '2026-07-12', 'local date is still today');
+  assert.strictEqual(localDateString(new Date(2026, 0, 5, 0, 1)), '2026-01-05', 'zero-padded, just after midnight');
+  process.env.TZ = savedTz === undefined ? '' : savedTz;
+  if (savedTz === undefined) delete process.env.TZ;
+}
+
+// --- LOAD-12 / LOAD-13: changed episodes and the last-watched code ---
+{
+  const eps = [{ id: 1, season: 1, number: 1 }, { id: 2, season: 1, number: null }];
+  assert.strictEqual(progressLost(eps, null), false, 'never started is not lost');
+  assert.strictEqual(progressLost(eps, 1), false);
+  assert.strictEqual(progressLost(eps, 99), true, 'stored episode no longer on TVmaze');
+  assert.strictEqual(progressLost([], 5), true);
+
+  const item = { showId: 1, watchedEpisodeId: 1 };
+  assert.strictEqual(rememberWatchedCode(item, eps), true);
+  assert.strictEqual(item.watchedCode, 'S01E01');
+  assert.strictEqual(rememberWatchedCode(item, eps), false, 'unchanged');
+  item.watchedEpisodeId = 2;
+  assert.strictEqual(rememberWatchedCode(item, eps), true);
+  assert.strictEqual(item.watchedCode, 'S01 Special', 'specials have a code too');
+  item.watchedEpisodeId = 99;
+  assert.strictEqual(rememberWatchedCode(item, eps), false, 'a vanished episode keeps the last known code');
+  assert.strictEqual(item.watchedCode, 'S01 Special');
+  item.watchedEpisodeId = null;
+  assert.strictEqual(rememberWatchedCode(item, eps), true, 'back to nothing watched clears it');
+  assert.ok(!('watchedCode' in item));
+  assert.ok(isValidLibraryItem({ showId: 1, watchedCode: 'S01E01' }));
+  assert.ok(!isValidLibraryItem({ showId: 1, watchedCode: 3 }), 'watchedCode must be a string');
+}
+
+// --- LOAD-14: staleness ---
+{
+  const H = 3600000;
+  assert.strictEqual(isStale(0, 13 * H, 12 * H), true, 'never loaded counts as stale');
+  assert.strictEqual(isStale(1 * H, 12 * H, 12 * H), false, '11 hours old');
+  assert.strictEqual(isStale(1 * H, 14 * H, 12 * H), true, '13 hours old');
+}
+
+// --- ADD-10: search errors in plain words, with the detail ---
+{
+  const http = s => Object.assign(new Error('TVmaze returned ' + s), { status: s });
+  assert.strictEqual(searchErrorText(new TypeError('Failed to fetch')),
+    'Couldn’t reach TVmaze. Check your connection and try again. (Failed to fetch)');
+  assert.strictEqual(searchErrorText(http(429)), 'TVmaze is busy. Wait a moment and try again. (TVmaze returned 429)');
+  assert.strictEqual(searchErrorText(http(503)), 'TVmaze returned an error. Try again. (TVmaze returned 503)');
+}
 
 // =====================================================================
 // Show load failures (§4.8)

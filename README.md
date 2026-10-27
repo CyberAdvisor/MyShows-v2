@@ -31,9 +31,13 @@ Hosted at **https://v2.myshows.fyi**
   <img src="screenshots/show-detail.png" width="280" valign="top" alt="A show's detail screen with the next episode, where you're watching it, and Mark watched">
 </p>
 <p align="center"><em>Your shows, split into what's on now and what you're binging &nbsp;·&nbsp; Every episode, with where you're up to</em></p>
+<p align="center">
+  <img src="screenshots/couldnt-load.png" width="280" valign="top" alt="The Couldn't load section at the top of the list, naming a show TVmaze couldn't supply and a show whose episodes changed on TVmaze">
+</p>
+<p align="center"><em>If a show can't be loaded, it's named, not hidden, so you can retry or fix it</em></p>
 
 - **Add a show** by searching (data comes from [TVmaze](https://www.tvmaze.com), a free public TV database — no TVmaze account or API key needed)
-- **See which show didn’t load.** If TVmaze can’t supply a show’s details, it’s listed by name so you can retry it, or delete it if TVmaze no longer has it
+- **See which show didn’t load.** If TVmaze can’t supply a show’s details, it’s listed by name so you can retry it, or delete it if TVmaze no longer has it. If TVmaze changes a show’s episodes so your place can’t be found, the app tells you where you were instead of starting over
 - **Say where you're up to** when you add a show: **Starting**, **Season/Episode last watched** (enter the season and episode), or **Caught Up** (the default — every aired episode is marked watched, handy for shows you're waiting on to return). The app figures out what's next and puts the show in the right group automatically, highlights it there, and confirms where it went
 - **Note where you're watching it** (Hulu, Netflix, whatever) — required when adding; shown next to the show name and on the episode detail screen
 - **Three groups**, each with a count:
@@ -126,7 +130,7 @@ node logic.test.js
 node app.test.js
 ```
 
-`logic.test.js` unit-tests the pure logic, read straight out of `index.html`. `app.test.js` loads the real `index.html` into jsdom with mocked TVmaze and GitHub APIs and drives it through setup, adding shows, segments, search, sync, every sync failure, and shows that can’t be loaded from TVmaze (named, retried or deleted, with requests paced to TVmaze’s rate limit).
+`logic.test.js` unit-tests the pure logic, read straight out of `index.html`. `app.test.js` loads the real `index.html` into jsdom with mocked TVmaze and GitHub APIs and drives it through setup, adding shows, segments, search, sync, every sync failure, shows that can’t be loaded from TVmaze (named, retried or deleted, with requests paced to TVmaze’s rate limit and a time limit), episodes changed on TVmaze, the local date, refreshing on return to the app, and a damaged copy on the device.
 
 ## Customizing this with Claude
 

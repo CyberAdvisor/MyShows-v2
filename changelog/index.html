@@ -88,6 +88,21 @@
   <p class="subhead">What's changed in My Shows V2, newest first.</p>
 
   <div class="entry">
+    <p class="entry-date">October 27, 2026<span class="tag">Version 2.8.0</span></p>
+    <h2>More reliable, and clearer when something goes wrong</h2>
+    <ul>
+      <li><strong>Your place is never silently reset.</strong> If TVmaze changes a show's episode list so the last episode you watched no longer exists, the show is listed under <strong>Couldn't load</strong> as <strong>Episodes changed on TVmaze</strong>, with the last episode you watched. Delete it and add it again at that episode. Before, it started again from the first episode.</li>
+      <li><strong>Evenings are right.</strong> "Today" now uses your own time zone. Before, from late afternoon or evening (depending on where you are) episodes airing the next day showed as ready to watch, and Caught Up could mark them watched.</li>
+      <li><strong>Stays current when left open.</strong> When you come back to the app, every show is brought up to today, and shows whose details are more than 12 hours old are fetched again.</li>
+      <li>A show that can't be refreshed keeps the details it already has instead of moving to Couldn't load. A request to TVmaze that hasn't answered after 20 seconds is given up on, so a show can't stay "loading" forever.</li>
+      <li>Messages above your list no longer replace each other. Each stays until you tap ✕, and "Could not save on this device" goes away by itself once saving works again.</li>
+      <li>If the season and episode you enter when adding a show don't exist on TVmaze, the message now says what happened and how to fix it.</li>
+      <li>Add Show search errors are in plain words (for example "Couldn't reach TVmaze. Check your connection and try again.").</li>
+      <li>A safety check: if the list saved on this device is missing or damaged, My Shows reloads it from your gist and never uploads the damaged copy over it.</li>
+    </ul>
+  </div>
+
+  <div class="entry">
     <p class="entry-date">October 27, 2026<span class="tag">Version 2.7.0</span></p>
     <h2>Shows that can't load are named, not hidden</h2>
     <ul>
