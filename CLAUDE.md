@@ -2,7 +2,7 @@
 
 > **Status:** Approved for the V2 initial build (2026-10-25). Changes to scope still require Michael's approval.
 > **Repository:** `CyberAdvisor/MyShows-v2` (new, separate from V1's `CyberAdvisor/MyShows`), served at **v2.myshows.fyi**
-> **Last updated:** 2026-10-25
+> **Last updated:** 2026-10-27 (2.7.0, show load failures, §4.8)
 
 This file is the single source of truth for V2 scope. Claude must read it before any V2 work, must not build anything not described here, and must stop and ask when something is ambiguous or listed under [Open decisions](#10-open-decisions).
 
@@ -75,6 +75,7 @@ Hard constraints:
 | **Main display** | The Shows list screen: three segments plus the list for the selected segment. |
 | **Segment** | One of the three status groups (Watching, Waiting, Done) shown as selection boxes at the top of the main display. |
 | **Gist** | A GitHub Gist owned by the user that holds a JSON copy of their library. |
+| **Failed show** | A show in the library whose TVmaze data could not be loaded (LOAD-3). Either **temporary** (it should load on a retry) or **gone** (TVmaze no longer has the show). |
 
 ---
 
@@ -93,7 +94,7 @@ Requirement IDs are stable; reference them in commits and tests.
 - **NAV-7** The **"My Shows" wordmark** in the header is a link that also returns to the main display, behaving identically to **Show**.
 - **NAV-8** Screens below the top level (show detail, sync setup, backup & restore) show a **back arrow** in the header that returns to the previous screen.
 - **NAV-9** Returning to the main display keeps the last-selected segment (see open decision **OD-13**).
-- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.6.3`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
+- **VER-1** A small muted line under the "My Shows" wordmark shows the app version on every screen, including Setup, e.g. `Version 2.7.0`. Tapping it opens the changelog. The version comes from one constant, `APP_VERSION`, in `index.html` and must match the newest changelog entry. It is raised with every release (minor for new behavior, patch for fixes).
 
 ### 4.2 Main display (Shows list)
 
@@ -186,6 +187,31 @@ Requirement IDs are stable; reference them in commits and tests.
 - **SYN-7** A sync failure never discards or blocks local changes. Once connected, the app stays usable offline from the local working copy and pushes when the connection returns.
 - **SYN-8** If the token is later rejected (expired or revoked), the app stays usable from the local copy, shows **Sync error — token rejected**, and offers **Change token**. It does not drop the user back to Setup.
 
+### 4.8 Loading show data and load failures (2.7.0)
+
+A show whose TVmaze data can't be loaded must never disappear silently. The user is told which show it is, and can retry it or, when TVmaze no longer has it, delete it.
+
+- **LOAD-1** **Show names are stored.** Each library item carries the show's name (`name`, DATA-2). It is set when the show is added and updated on every successful load, so shows already in a library, and shows TVmaze renames, pick it up automatically. Items without a name (older gists, older V2 backups, V1 backups) stay valid. A name filled in by a load is saved **on the device only** and reaches the gist with the next real change: it never triggers a push or moves `lastLocalChangeAt`, so loading can never make a device look newer than the gist (GST-3).
+- **LOAD-2** **Requests are paced** to stay within TVmaze's rate limit (about 20 requests per 10 seconds per IP; each show takes 2). This applies to every load of several shows: app load, after a sync pull, and Retry. If a request is still refused for being too frequent, the app waits and tries that show again automatically before treating it as failed.
+- **LOAD-3** **Each failed load is classified:**
+
+  | TVmaze result | Class | Meaning to the user |
+  |---|---|---|
+  | 404 Not Found | **Gone** | TVmaze no longer has this show. Retrying will not help. |
+  | 429 (after LOAD-2's automatic retry), 5xx, no response, unreadable data | **Temporary** | Could not load right now. Retrying should work. |
+
+  A 301 redirect (show merged into another ID) is followed by the browser and is not a failure. The stored `showId` is not changed.
+- **LOAD-4** **Couldn't load section.** Failed shows are listed in a section headed **Couldn't load**, at the top of **every** segment, above that segment's other sections. The section is not displayed when no show has failed. Each row shows the show's name (or `TVmaze show #<id>` if no name has been stored yet), its platform, and either **Couldn't load — tap to retry** (temporary) or **No longer on TVmaze — tap to delete** (gone). Mockup 5.16.
+- **LOAD-5** **Counts.** A failed show is not counted in any segment (LIST-4), because its segment can't be worked out without TVmaze data. It is counted once it loads.
+- **LOAD-6** **Failed-show screen.** Tapping a failed row opens a short screen (back arrow, NAV-8) with the name, platform and what happened. Mockup 5.17.
+  - **Temporary:** a **Retry** button (`Retrying…` while it runs). On success the app returns to the main display on the show's segment, with a toast `<name> loaded` (as OD-10). If it fails again, the screen says `Still couldn't load it. Check your connection, or try again later.`
+  - **Gone:** a **Delete series** button that behaves exactly as DET-3 (removed entirely, no confirmation, change synced). The app returns to the main display.
+- **LOAD-7** **Banner.** While any show has failed, the main display shows a banner above the segments naming each one, e.g. `Couldn't load: Severance, Slow Horses` with a **Retry** button (retries only temporary failures), and on its own line `No longer on TVmaze: The Expanse — tap it below to delete`. The banner updates as shows load or are deleted, and disappears when nothing has failed. It replaces the old fixed message `Could not load data for one or more shows.`
+- **LOAD-8** **Loading in progress.** While shows are still being fetched, a muted line at the top of the list reads `Loading 12 more shows…` so shows not yet loaded aren't mistaken for missing ones, and a segment's empty-state message is not shown. Rows appear and counts update as each show arrives. The app no longer waits on a full-screen `Loading your shows…` at startup, after connecting or after a restore; only a V1 import still waits, because its report needs every show's name.
+- **LOAD-9** **No automatic deletes.** A gone show is never removed by the app. Only the user's Delete series removes it.
+- **LOAD-10** **Search** (SRCH-2) includes failed shows by stored name, with the group tag **Couldn't load** (SRCH-4).
+- **LOAD-11** Temporary failures are tried again automatically on the next app load and whenever the app returns to the foreground (OD-6), in addition to Retry.
+
 ---
 
 ## 5. Screen mockups
@@ -197,7 +223,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │  ← wordmark = home link (NAV-7)
-│  Version 2.6.3                      │     sync indicator (SYN-5, OD-8); version (VER-1)
+│  Version 2.7.0                      │     sync indicator (SYN-5, OD-8); version (VER-1)
 │  ( 🔍 Search my shows            )  │
 │                                     │
 │ ┌───────────┬───────────┬─────────┐ │
@@ -308,7 +334,7 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 ```
 ┌─────────────────────────────────────┐
 │  My Shows                     ⟳ ✓   │
-│  Version 2.6.3                      │  ← VER-1
+│  Version 2.7.0                      │  ← VER-1
 │  Add show                           │
 │  Search                             │
 │  ( shogun                        )  │
@@ -468,6 +494,65 @@ Mockups are iPhone width (~375 px) unless noted. They show structure and content
 └─────────────────────────────────────┘
 ```
 
+### 5.16 Shows — with failed shows (LOAD-4, LOAD-5, LOAD-7)
+
+```
+┌─────────────────────────────────────┐
+│  My Shows                     ⟳ ✓   │
+│  Version 2.7.0                      │
+│  ( 🔍 Search my shows            )  │
+│ ┌─────────────────────────────────┐ │
+│ │ Couldn't load: Slow Horses      │ │  ← banner (LOAD-7); Retry = temporary only
+│ │ No longer on TVmaze:            │ │
+│ │ TVmaze show #48121 — tap it     │ │  ← no stored name yet (LOAD-1)
+│ │ below to delete       [ Retry ] │ │
+│ └─────────────────────────────────┘ │
+│ ┌───────────┬───────────┬─────────┐ │
+│ │●Watching 6│ Waiting 12│ Done 9  │ │  ← failed shows not counted (LOAD-5)
+│ └───────────┴───────────┴─────────┘ │
+│                                     │
+│  COULDN'T LOAD                      │  ← top of every segment (LOAD-4)
+│  ┌───────────────────────────────┐  │
+│  │ Slow Horses - Apple TV+       │  │
+│  │ Couldn't load — tap to retry  │  │  ← temporary
+│  └───────────────────────────────┘  │
+│  ┌───────────────────────────────┐  │
+│  │ TVmaze show #48121 - Hulu     │  │
+│  │ No longer on TVmaze — tap to  │  │  ← gone
+│  │ delete                        │  │
+│  └───────────────────────────────┘  │
+│  CURRENTLY RUNNING SHOWS            │  ← segment's normal sections follow
+│  ┌───────────────────────────────┐  │
+│  │  V1 show row (unchanged)      │  │
+│  └───────────────────────────────┘  │
+├─────────────────────────────────────┤
+│   ▣ Show     ＋ Add Show   ⚙ Settings │
+└─────────────────────────────────────┘
+```
+
+While loading (LOAD-8), a muted line `Loading 12 more shows…` sits at the top of the list, under the segments.
+
+### 5.17 Failed-show screen (LOAD-6)
+
+```
+┌─────────────────────────────────────┐   ┌─────────────────────────────────────┐
+│  ←  Slow Horses                     │   │  ←  TVmaze show #48121              │
+│                                     │   │                                     │
+│  Watching on Apple TV+              │   │  Watching on Hulu                   │
+│                                     │   │                                     │
+│  This show's details couldn't be    │   │  TVmaze no longer has this show,    │
+│  loaded from TVmaze right now. Your │   │  so its episodes can't be tracked.  │
+│  place in the show is kept.         │   │  If it was replaced by a new        │
+│                                     │   │  listing, delete it and add the     │
+│  [            Retry             ]   │   │  show again with Add Show.          │
+│                                     │   │                                     │
+│                                     │   │  [         Delete series        ]   │
+├─────────────────────────────────────┤   ├─────────────────────────────────────┤
+│   ▣ Show     ＋ Add Show   ⚙ Settings │   │   ▣ Show     ＋ Add Show   ⚙ Settings │
+└─────────────────────────────────────┘   └─────────────────────────────────────┘
+          Temporary failure                            Gone (404)
+```
+
 ### 5.14 iPad / Mac width
 
 V2 uses the same single-column layout at all widths, centered with a maximum content width. Separate iPhone vs iPad/Mac layouts are not in V2 (see §12).
@@ -491,11 +576,12 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
 ## 6. Data model and storage
 
 - **DATA-1** The gist file `myshows.json` (GST-1) is the source of truth. The local working copy lives in `localStorage` under a **new** key, **`my-shows-library-v2`**. V2 never reads `my-shows-library-v1`.
-- **DATA-2** Each library item uses the same fields as V1 (V1 data itself is never read):
+- **DATA-2** Each library item uses the same fields as V1 (V1 data itself is never read), plus `name` (2.7.0):
 
   ```js
   {
     showId: 251,              // TVmaze show id (required, integer, unique in the library)
+    name: "Severance",        // TVmaze show name, optional; set on add and refreshed on every successful load (LOAD-1)
     platform: "Hulu",         // free text, may be ""
     watchedEpisodeId: 20865,  // TVmaze episode id of the last watched episode, or null
     pendingSeasonNumber: { season: 2, number: 8 },  // transient (Season/Episode last watched), resolved to watchedEpisodeId on first load
@@ -578,7 +664,7 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
   1. Constants and storage keys
   2. Pure logic (status computation, grouping, sorting, search, sync decisions) — no DOM, no fetch
   3. Storage (`loadLibrary`, `saveLibrary`, sync settings)
-  4. TVmaze client
+  4. TVmaze client (paced requests and failure classification, LOAD-2/LOAD-3)
   5. Gist client
   6. Sync controller (scheduling, status)
   7. Rendering (one function per screen)
@@ -586,8 +672,8 @@ V2 uses the same single-column layout at all widths, centered with a maximum con
 - **ARC-4** Every function has a short comment stating what it does, its inputs and its outputs. Section headers explain the section's job.
 - **ARC-5** Sync is hooked only at `saveLibrary()` (push), load (pull) and Setup (first connect). No other code path calls the gist client.
 - **ARC-6** V1 compatibility is limited to SET-4: one pure function (`splitV1Backup`) that splits a V1 backup into importable entries and listed skips. No reading of V1 storage keys and no conversion of old V1 formats.
-- **TST-1** Unit tests cover: status grouping (Watching / Waiting / Done), suspended override, sorting, search across groups, Add placement (ADD-3/ADD-4), last-write-wins decisions, payload wrap/unwrap and validation, identifying the My Shows gist in a gist list, and each first-connect case (SYN-4).
-- **TST-2** Integration tests (jsdom, mocked `fetch` and `localStorage`) cover: Setup shown on first launch and blocking the rest of the app, connect success and each connect error, tab navigation, segment switching and counts, search, both Add actions and toast, suspend/resume, delete, backup/restore in Settings, push on change, pull on load, offline use, token rejected after connect, disconnect, and every failure in §7.3.
+- **TST-1** Unit tests cover: status grouping (Watching / Waiting / Done), suspended override, sorting, search across groups, Add placement (ADD-3/ADD-4), last-write-wins decisions, payload wrap/unwrap and validation, identifying the My Shows gist in a gist list, each first-connect case (SYN-4), classifying TVmaze results (LOAD-3), counts excluding failed shows (LOAD-5), and validation of items with and without `name` (LOAD-1).
+- **TST-2** Integration tests (jsdom, mocked `fetch` and `localStorage`) cover: Setup shown on first launch and blocking the rest of the app, connect success and each connect error, tab navigation, segment switching and counts, search, both Add actions and toast, suspend/resume, delete, backup/restore in Settings, push on change, pull on load, offline use, token rejected after connect, disconnect, every failure in §7.3, and show load failures: the Couldn't load section and banner for temporary and gone shows, Retry, delete of a gone show, name stored and backfilled, pacing with the rate-limit retry, and the loading line (§4.8).
 - **TST-3** Fixtures are V2-only: a gist list with no My Shows gist (app creates one), with one valid My Shows gist, with one invalid My Shows gist, and with more than one.
 - **TST-4** All tests pass before any file is handed over.
 - **DOC-1** `README.md` opens with a short **"V2 vs V1"** section, before any setup steps, stating:
@@ -662,6 +748,10 @@ Items in the current design that could confuse users, to resolve or accept expli
 - **U-14 Existing V1 users.** A V1 backup file brings a V1 list across (SET-4); only shows without a platform or in a very old V1 format need re-adding, and the import screen lists them. Nothing in V1 tells users V2 exists. A V1 restore replaces the V2 list, like any restore, so restoring V1 over a V2 list already in use loses the V2 changes on every device.
 - **U-18 Testing in production.** Anyone who finds v2.myshows.fyi sees work in progress, and a bad push affects real V2 users' sync immediately. A pushed bug that writes a malformed library could overwrite a user's gist (GST-12 only protects reads), so the payload validation should also run before every push.
 - **U-15 Disconnect wipes this device.** Users may expect Disconnect to leave their list visible. The confirmation must say the list stays in the gist and will be reloaded on reconnect.
+- **U-20 Unnamed failed shows (2.7.0).** Shows saved before 2.7.0 have no stored name until they load once. If one fails before that (e.g. a show TVmaze has already removed), it can only be shown as `TVmaze show #<id>` with its platform. The platform is usually enough to recognize it. After every show has loaded once under 2.7.0 this case no longer occurs.
+- **U-21 Counts exclude failed shows (2.7.0).** A segment's count drops by one while a show is failing (LOAD-5), which may read as a show going missing. The Couldn't load section at the top of every segment and the banner make it visible.
+- **U-22 Delete with no confirmation for gone shows (2.7.0).** Accepted, consistent with DET-3 and U-11: the user has been told the show is no longer on TVmaze before tapping Delete series.
+- **U-23 Slower full load for large libraries (2.7.0).** Pacing (LOAD-2) means a large library takes longer to load completely, roughly one show per second beyond the first ten. Rows and counts fill in as shows arrive, and the loading line (LOAD-8) says how many are left.
 
 ---
 
@@ -708,3 +798,4 @@ Items in the current design that could confuse users, to resolve or accept expli
 | 2026-10-25 | Version 2.6.2: LIST-15 corrected — the main display link opens the README on GitHub in a new tab (as V1), not the guide. |
 | 2026-10-25 | `sitemap.xml` and `robots.txt` added for search engines (DEP-8, ARC-1). No app change. |
 | 2026-10-25 | Version 2.6.3: search-result description added to the main page; DEP-8 requires one on every sitemap page. |
+| 2026-10-27 | Version 2.7.0: show load failures (§4.8, LOAD-1 to LOAD-11). Show names stored (DATA-2 `name`); TVmaze requests paced with an automatic retry when rate-limited; failures classified as temporary or gone (404); failed shows listed by name in a Couldn't load section at the top of every segment and in the banner, not counted in segments; Retry for temporary failures, Delete series (as DET-3) for gone shows; no automatic deletes; loading line. Glossary, ARC-3, TST-1, TST-2 updated; mockups 5.16 and 5.17; U-20 to U-23. Replaces the fixed message `Could not load data for one or more shows.`, which named no show and hid the failed one. Implementation details settled in the build: names filled in by a load are saved on the device only (LOAD-1); a successful Retry returns to the show's segment with a toast (LOAD-6); no full-screen loading wait except V1 import (LOAD-8); shows already loading are not fetched again after a pull, and a load finishing after a pull computes with the current item. |

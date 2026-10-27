@@ -133,6 +133,7 @@
       <li><a href="#previous-next">Going back or skipping an episode</a></li>
       <li><a href="#suspending-a-show">Suspending a show</a></li>
       <li><a href="#deleting-a-series">Deleting a series</a></li>
+      <li><a href="#cant-load">When a show can’t load</a></li>
       <li><a href="#sync">Sync status and fixing sync problems</a></li>
     </ol>
   </div>
@@ -209,6 +210,15 @@
   <h2 id="deleting-a-series">Deleting a series</h2>
   <p>On the show's detail screen, <strong>Suspend series</strong> and <strong>Delete series</strong> sit next to each other.</p>
   <p class="note">Tapping <strong>Delete series</strong> immediately removes the show and its watch history. There's no confirmation step and no undo, and within a few seconds it's gone from all your devices. If you might want the show back later, use Suspend instead.</p>
+
+  <h2 id="cant-load">When a show can’t load</h2>
+  <p>Every show’s episodes come from TVmaze each time you open My Shows. If a show can’t be loaded, it isn’t hidden: it’s listed by name in a <strong>Couldn’t load</strong> section at the top of your list, on every tab, and the message above your list names it too. It isn’t counted in Watching, Waiting or Done until it loads.</p>
+  <ul>
+    <li><strong>Couldn’t load — tap to retry.</strong> TVmaze didn’t answer this time (a connection problem, TVmaze being busy, or too many requests at once). Your place in the show is kept. Tap <strong>Retry</strong> in the message, or tap the show and then <strong>Retry</strong>. My Shows also tries again by itself the next time you open the app or come back to it.</li>
+    <li><strong>No longer on TVmaze — tap to delete.</strong> TVmaze has removed the show, so its episodes can’t be tracked any more. Tap it, then <strong>Delete series</strong>. If the show was given a new listing on TVmaze, add it again with Add Show. My Shows never deletes a show by itself.</li>
+  </ul>
+  <p class="note">My Shows remembers each show’s name from the last time it loaded. A show added before version 2.7.0 that has never loaded since is shown as <strong>TVmaze show #</strong> and a number, with the platform you entered.</p>
+  <p>With a long list, shows appear a few at a time while they load (<strong>Loading 12 more shows…</strong>), because TVmaze limits how quickly an app can ask for data.</p>
 
   <h2 id="sync">Sync status and fixing sync problems</h2>
   <p>The badge at the top right always shows the sync status. Tap it to open <strong>Settings › Sync</strong>.</p>

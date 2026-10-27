@@ -25,8 +25,61 @@ const {
   segmentForStatus, displaySegment, groupTagLabel, buildSegments, segmentCounts, searchEntries,
   isValidLibraryItem, isValidLibrary, wrapPayload, isValidPayload, parsePayloadText,
   decideSync, nextTimestamp, findCandidateGistIds, classifyCandidates, describeSyncError, formatSyncTime,
-  lastAiredEpisodeId, APP_VERSION, stepWatchedEpisode, splitV1Backup, V1_SKIP_REASONS
+  lastAiredEpisodeId, APP_VERSION, stepWatchedEpisode, splitV1Backup, V1_SKIP_REASONS,
+  classifyLoadFailure, storedShowName, rememberShowName, buildFailedEntries, throttleDelay
 } = L;
+
+// =====================================================================
+// Show load failures (§4.8)
+// =====================================================================
+
+// --- LOAD-3: classification ---
+{
+  const httpError = status => Object.assign(new Error('TVmaze returned ' + status), { status });
+  assert.strictEqual(classifyLoadFailure(httpError(404)), 'gone', '404: TVmaze no longer has the show');
+  [429, 500, 502, 503, 504].forEach(s => assert.strictEqual(classifyLoadFailure(httpError(s)), 'temporary', s + ' is temporary'));
+  assert.strictEqual(classifyLoadFailure(new TypeError('Load failed')), 'temporary', 'no response is temporary');
+  assert.strictEqual(classifyLoadFailure(new SyntaxError('Unexpected token')), 'temporary', 'unreadable data is temporary');
+  assert.strictEqual(classifyLoadFailure(undefined), 'temporary');
+}
+
+// --- LOAD-1: stored names ---
+{
+  assert.strictEqual(storedShowName({ showId: 7, name: 'Severance' }), 'Severance');
+  assert.strictEqual(storedShowName({ showId: 7 }), 'TVmaze show #7', 'no name stored yet');
+  const item = { showId: 7 };
+  assert.strictEqual(rememberShowName(item, { name: 'Severance' }), true, 'new name');
+  assert.strictEqual(item.name, 'Severance');
+  assert.strictEqual(rememberShowName(item, { name: 'Severance' }), false, 'unchanged');
+  assert.strictEqual(rememberShowName(item, { name: 'Severance (2022)' }), true, 'renamed on TVmaze');
+  assert.strictEqual(rememberShowName(item, { name: '' }), false, 'blank names are ignored');
+  assert.strictEqual(rememberShowName(item, {}), false);
+  assert.strictEqual(item.name, 'Severance (2022)');
+  assert.ok(isValidLibraryItem({ showId: 1, name: 'X' }) && isValidLibraryItem({ showId: 1 }), 'name is optional');
+  assert.ok(!isValidLibraryItem({ showId: 1, name: null }), 'name must be a string when present');
+}
+
+// --- LOAD-4: Couldn't load entries, A-Z, only failed shows ---
+{
+  const library = [{ showId: 1, name: 'Zeta' }, { showId: 2 }, { showId: 3, name: 'Alpha' }, { showId: 4, name: 'Loaded' }];
+  const entries = buildFailedEntries(library, { 1: 'temporary', 2: 'gone', 3: 'temporary' });
+  assert.deepStrictEqual(entries.map(e => [e.show.name, e.failure]),
+    [['Alpha', 'temporary'], ['TVmaze show #2', 'gone'], ['Zeta', 'temporary']]);
+  assert.strictEqual(entries[0].item, library[2], 'entries carry the library item');
+  assert.deepStrictEqual(buildFailedEntries(library, {}), []);
+  assert.deepStrictEqual(searchEntries(entries, 'zet').map(e => e.show.name), ['Zeta'], 'LOAD-10: searchable by name');
+}
+
+// --- LOAD-2: pacing ---
+{
+  assert.strictEqual(throttleDelay([], 0, 20, 10000), 0, 'nothing sent yet');
+  const nineteen = Array.from({ length: 19 }, (_, i) => i * 10);
+  assert.strictEqual(throttleDelay(nineteen, 500, 20, 10000), 0, 'under the limit');
+  const twenty = nineteen.concat([190]);
+  assert.strictEqual(throttleDelay(twenty, 500, 20, 10000), 9500, 'wait until the oldest leaves the window');
+  assert.strictEqual(throttleDelay(twenty, 10000, 20, 10000), 0, 'oldest has left the window');
+  assert.strictEqual(throttleDelay([0, 100, 200], 250, 2, 300), 150, 'only the most recent `max` matter');
+}
 
 const TODAY = '2026-07-12';
 

@@ -183,8 +183,16 @@ async function start(opts) {
   const { window } = dom;
   openWindows.push(window);
   freezeDate(window, '2026-07-12T12:00:00');
-  window.fetch = (url, options) => url.startsWith('https://api.github.com') ? gh.handle(url, options) : tvmazeFetch(url);
-  const env = { window, doc: window.document, gh, confirmAnswer: true, confirmMessages: [] };
+  // opts.tvmaze(url) may return a Promise<response> to override the mock
+  // TVmaze for that request (failures, 404s, 429s); env.tvmazeLog records
+  // each TVmaze request with the real time it started (pacing, LOAD-2).
+  const env = { window, doc: window.document, gh, confirmAnswer: true, confirmMessages: [], tvmazeLog: [] };
+  window.fetch = (url, options) => {
+    if (url.startsWith('https://api.github.com')) return gh.handle(url, options);
+    env.tvmazeLog.push({ url, at: performance.now() });
+    const override = opts.tvmaze && opts.tvmaze(url);
+    return override || tvmazeFetch(url);
+  };
   window.confirm = (msg) => { env.confirmMessages.push(msg); return env.confirmAnswer; };
 
   if (opts.library) {
@@ -193,7 +201,16 @@ async function start(opts) {
     window.localStorage.setItem(SYNC_KEY, JSON.stringify(opts.settings || { gistId, token: 'good', lastSyncedAt: T0, lastLocalChangeAt: T0 }));
     env.gistId = gistId;
   }
-  window.eval(scriptBody);
+  // opts.constants shortens TVmaze pacing/retry constants before the app
+  // starts (its first load begins immediately). Defaults are checked in
+  // testTvmazePacingDefaults.
+  let body = scriptBody;
+  Object.entries(opts.constants || {}).forEach(([name, value]) => {
+    const pattern = new RegExp('^var ' + name + ' = [^;]+;', 'm');
+    assert.ok(pattern.test(body), 'constant ' + name + ' exists');
+    body = body.replace(pattern, 'var ' + name + ' = ' + value + ';');
+  });
+  window.eval(body);
   // The real debounce is 2 s (GST-4); checked once, then shortened for speed.
   assert.strictEqual(window.SYNC_DEBOUNCE_MS, 2000, 'push debounce is about 2 seconds');
   assert.strictEqual(window.CONFIRM_MS, 5000, 'add confirmation shows for about 5 seconds (ADD-5)');
@@ -1155,6 +1172,223 @@ async function testEpisodesLeftOnDetail() {
   console.log('testEpisodesLeftOnDetail passed.');
 }
 
+// =====================================================================
+// Show load failures (CLAUDE.md §4.8, LOAD-1..11)
+// =====================================================================
+
+// A show the mock TVmaze only serves when a test says so (via opts.tvmaze).
+const slowHorses = {
+  info: { id: 4242, name: 'Slow Horses', status: 'Running', premiered: '2022-04-01', webChannel: { name: 'Apple TV+' } },
+  episodes: [{ id: 42001, season: 1, number: 1, name: 'Failure’s Contagious', airdate: '2022-04-01', runtime: 50, summary: '<p>Ep 1.</p>' }]
+};
+// Serves Slow Horses (show 4242) for as long as `on()` is true.
+function serveSlowHorses(on) {
+  return url => {
+    const m = url.match(/\/shows\/4242(\/episodes\?specials=1)?$/);
+    if (!m || !on()) return null;
+    return Promise.resolve(response(200, m[1] ? slowHorses.episodes : Object.assign({}, slowHorses.info)));
+  };
+}
+// TVmaze answers 404 for show 31337: it no longer exists (LOAD-3 "gone").
+function goneShow(url) {
+  return /\/shows\/31337(\/|$)/.test(url) ? Promise.resolve(response(404, { name: 'Not Found', status: 404 })) : null;
+}
+function failedRowTitles(env) {
+  return [...env.doc.querySelectorAll('#failed-list .row-title')].map(t => t.childNodes[0].textContent.trim());
+}
+
+// A library where one show can't load right now (stored name) and one is
+// gone from TVmaze (saved before 2.7.0, so no name).
+function failingLibrary() {
+  return [
+    { showId: 501, name: 'The Bear', platform: 'Hulu', watchedEpisodeId: 1002 }, // loads -> Watching
+    { showId: 4242, name: 'Slow Horses', platform: 'Apple TV+', watchedEpisodeId: null }, // temporary
+    { showId: 31337, platform: 'Hulu', watchedEpisodeId: 5 } // gone, no stored name
+  ];
+}
+
+async function testFailedShowsAreListedByName() {
+  const env = await start({ library: failingLibrary(), tvmaze: goneShow });
+  await wait(40);
+
+  // LOAD-7: the banner names each show and offers Retry for the temporary one.
+  const banner = text(env, '#load-banner');
+  assert.ok(banner.includes('Couldn’t load: Slow Horses'), 'banner names the temporary failure');
+  assert.ok(banner.includes('No longer on TVmaze: TVmaze show #31337'), 'banner names the gone show by id when no name is stored (LOAD-1)');
+  assert.ok(env.doc.getElementById('retry-failed-btn'), 'banner has Retry');
+  assert.ok(!env.doc.body.textContent.includes('Could not load data for one or more shows'), 'the old unnamed message is gone');
+
+  // LOAD-4: Couldn't load section at the top of every segment; LOAD-5: not counted.
+  for (const seg of ['watching', 'waiting', 'done']) {
+    clickSegment(env, seg);
+    await wait(5);
+    assert.deepStrictEqual(failedRowTitles(env), ['Slow Horses', 'TVmaze show #31337'], 'failed shows listed on ' + seg);
+    const firstLabel = env.doc.querySelector('#list-body .section-label');
+    assert.strictEqual(firstLabel.textContent, 'Couldn’t load', 'the section comes first on ' + seg);
+  }
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting0', 'Done0'], 'failed shows are not counted (LOAD-5)');
+  assert.ok(text(env, '#row-4242').includes('Apple TV+'), 'row shows the platform');
+  assert.ok(text(env, '#row-4242').includes('Couldn’t load — tap to retry'));
+  assert.ok(text(env, '#row-31337').includes('No longer on TVmaze — tap to delete'));
+  assert.ok(!env.doc.getElementById('loading-line'), 'no loading line once everything has settled');
+
+  // LOAD-10: search finds failed shows by stored name, tagged.
+  type(env, 'list-search', 'slow');
+  await wait(5);
+  assert.deepStrictEqual(rowTitles(env), ['Slow Horses'], 'search matches the stored name');
+  assert.strictEqual(text(env, '#row-4242 .group-tag'), 'Couldn’t load', 'tagged Couldn’t load');
+  type(env, 'list-search', '');
+
+  // Nothing about a failure is saved or synced.
+  assert.ok(storedLibrary(env).every(i => !('failure' in i)), 'failure state is never stored');
+  assert.strictEqual(env.gh.writes().length, 0, 'loading failures push nothing to the gist');
+  console.log('testFailedShowsAreListedByName passed.');
+}
+
+async function testRetryTemporaryFailure() {
+  let available = false;
+  const env = await start({ library: failingLibrary(), tvmaze: url => goneShow(url) || serveSlowHorses(() => available)(url) });
+  await wait(40);
+
+  // LOAD-6: the failed-show screen; Retry that fails again says so.
+  click(env, 'row-4242');
+  await wait(5);
+  assert.strictEqual(text(env, '.screen-title h1'), 'Slow Horses');
+  assert.ok(text(env, '#failed-message').includes('couldn’t be loaded from TVmaze right now'));
+  assert.ok(!env.doc.getElementById('failed-delete-btn'), 'no Delete for a temporary failure');
+  click(env, 'failed-retry-btn');
+  assert.strictEqual(text(env, '#failed-retry-btn'), 'Retrying…', 'Retry shows progress');
+  await wait(30);
+  assert.ok(text(env, '.error-text').includes('Still couldn’t load it'), 'a failed retry says so');
+
+  // Retry that works: back to the list on the show's segment, with a toast.
+  available = true;
+  click(env, 'failed-retry-btn');
+  await wait(30);
+  assert.ok(env.doc.getElementById('list-body'), 'back on the main display');
+  assert.strictEqual(env.doc.querySelector('.segments button.active').getAttribute('data-segment'), 'watching', 'on the show’s segment');
+  assert.ok(text(env, '#toast').includes('Slow Horses loaded'));
+  assert.ok(rowTitles(env).includes('Slow Horses') && !failedRowTitles(env).includes('Slow Horses'), 'listed normally now');
+  assert.ok(!text(env, '#load-banner').includes('Couldn’t load:'), 'banner no longer names it');
+  assert.ok(!env.doc.getElementById('retry-failed-btn'), 'no Retry left: only a gone show remains');
+  console.log('testRetryTemporaryFailure passed.');
+}
+
+async function testBannerRetryAndForegroundRetry() {
+  let available = false;
+  let env = await start({ library: failingLibrary().slice(0, 2), tvmaze: serveSlowHorses(() => available) });
+  await wait(40);
+  available = true;
+  click(env, 'retry-failed-btn');
+  await wait(30);
+  assert.ok(!env.doc.getElementById('load-banner'), 'banner disappears when nothing has failed (LOAD-7)');
+  assert.ok(!env.doc.getElementById('failed-list'), 'section disappears too (LOAD-4)');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching2', 'Waiting0', 'Done0'], 'counted once loaded');
+
+  // LOAD-11: coming back to the app tries temporary failures again.
+  available = false;
+  env = await start({ library: failingLibrary().slice(0, 2), tvmaze: serveSlowHorses(() => available) });
+  await wait(40);
+  assert.deepStrictEqual(failedRowTitles(env), ['Slow Horses']);
+  available = true;
+  env.doc.dispatchEvent(new env.window.Event('visibilitychange'));
+  await wait(40);
+  assert.deepStrictEqual(failedRowTitles(env), [], 'loaded on return to the app');
+  assert.ok(rowTitles(env).includes('Slow Horses'));
+  console.log('testBannerRetryAndForegroundRetry passed.');
+}
+
+async function testDeleteGoneShow() {
+  const env = await start({ library: failingLibrary(), tvmaze: goneShow });
+  await wait(40);
+  click(env, 'row-31337');
+  await wait(5);
+  assert.strictEqual(text(env, '.screen-title h1'), 'TVmaze show #31337');
+  assert.ok(text(env, '#app').includes('Watching on'), 'platform shown');
+  assert.ok(text(env, '#failed-message').includes('TVmaze no longer has this show'));
+  assert.ok(!env.doc.getElementById('failed-retry-btn'), 'no Retry for a gone show');
+  assert.strictEqual(storedLibrary(env).length, 3, 'never deleted automatically (LOAD-9)');
+
+  click(env, 'failed-delete-btn');
+  await wait(80);
+  assert.ok(env.doc.getElementById('list-body'), 'back on the main display');
+  assert.deepStrictEqual(storedLibrary(env).map(i => i.showId), [501, 4242], 'removed from this device');
+  assert.deepStrictEqual(env.gh.content(env.gistId).library.map(i => i.showId), [501, 4242], 'and from the gist (DET-3)');
+  assert.ok(!text(env, '#load-banner').includes('No longer on TVmaze'), 'banner no longer lists it');
+  console.log('testDeleteGoneShow passed.');
+}
+
+async function testShowNamesAreStored() {
+  // LOAD-1: names fill in on load, on this device only (no push).
+  const env = await start({ library: [{ showId: 501, platform: 'Hulu', watchedEpisodeId: 1002 }] });
+  await wait(80);
+  assert.strictEqual(storedLibrary(env)[0].name, 'The Bear', 'name filled in on load');
+  assert.strictEqual(env.gh.writes().length, 0, 'filling in a name never pushes by itself');
+  assert.strictEqual(storedSettings(env).lastLocalChangeAt, T0, 'and never makes this device look newer than the gist');
+
+  // Added shows store their name, and it reaches the gist with the add.
+  await selectResult(env, 'fleabag', 888);
+  type(env, 'platform-input', 'Prime');
+  click(env, 'submit-add-btn');
+  await wait(100);
+  const gistShows = env.gh.content(env.gistId).library;
+  assert.strictEqual(gistShows.find(i => i.showId === 888).name, 'Fleabag', 'added show saved with its name');
+  assert.strictEqual(gistShows.find(i => i.showId === 501).name, 'The Bear', 'filled-in names go along with the next change');
+
+  // A gist written before 2.7.0 (no names) is still valid; a non-string name isn't.
+  assert.ok(env.window.isValidLibrary([{ showId: 1 }]));
+  assert.ok(!env.window.isValidLibrary([{ showId: 1, name: 5 }]));
+  console.log('testShowNamesAreStored passed.');
+}
+
+async function testRateLimitedShowIsRetried() {
+  // LOAD-2: a 429 waits and retries; after TVMAZE_429_RETRIES it fails as temporary.
+  let refusals = 1;
+  const tooFast = url => (/\/shows\/501(\/|$)/.test(url) && refusals-- > 0) ? Promise.resolve(response(429, {})) : null;
+  let env = await start({ library: [{ showId: 501, platform: 'Hulu', watchedEpisodeId: 1002 }], tvmaze: tooFast, constants: { TVMAZE_RETRY_MS: 20 } });
+  await wait(80);
+  assert.deepStrictEqual(rowTitles(env), ['The Bear'], 'loaded after one automatic retry');
+  assert.ok(!env.doc.getElementById('load-banner'));
+
+  refusals = 99;
+  env = await start({ library: [{ showId: 501, name: 'The Bear', platform: 'Hulu', watchedEpisodeId: 1002 }], tvmaze: tooFast, constants: { TVMAZE_RETRY_MS: 10 } });
+  await wait(120);
+  assert.deepStrictEqual(failedRowTitles(env), ['The Bear'], 'still refused after the retries: listed as couldn’t load');
+  const showRequests = env.tvmazeLog.filter(r => /\/shows\/501$/.test(r.url)).length;
+  assert.strictEqual(showRequests, 3, 'one request plus two automatic retries');
+  console.log('testRateLimitedShowIsRetried passed.');
+}
+
+async function testTvmazePacing() {
+  // LOAD-2: no more than TVMAZE_MAX_REQUESTS start in any TVMAZE_WINDOW_MS,
+  // and the list fills in as shows arrive with a loading line (LOAD-8).
+  // Four shows (eight requests), none of them in Watching.
+  const library = mixedLibrary().filter(i => i.showId !== 501);
+  const env = await start({ library, constants: { TVMAZE_MAX_REQUESTS: 2, TVMAZE_WINDOW_MS: 150 } });
+  // start() waits 80 ms: only the first show's two requests can have started.
+  assert.strictEqual(text(env, '#loading-line'), 'Loading 3 more shows…', 'loading line while shows are still arriving');
+  assert.ok(!env.doc.querySelector('#list-body .empty'), 'no "nothing to watch" message while shows are still loading');
+  await wait(700);
+  assert.ok(!env.doc.getElementById('loading-line'), 'loading line gone when done');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting3', 'Done1'], 'every show loaded');
+  assert.ok(env.doc.querySelector('#list-body .empty'), 'empty Watching message once loading is finished');
+  const starts = env.tvmazeLog.map(r => r.at);
+  assert.strictEqual(starts.length, 8);
+  for (let i = 2; i < starts.length; i++) {
+    assert.ok(starts[i] - starts[i - 2] >= 145, 'request ' + i + ' waited for the window (' + Math.round(starts[i] - starts[i - 2]) + ' ms)');
+  }
+  console.log('testTvmazePacing passed.');
+}
+
+async function testTvmazePacingDefaults() {
+  const env = await start({ library: [] });
+  assert.strictEqual(env.window.TVMAZE_MAX_REQUESTS, 20, 'about 20 requests...');
+  assert.strictEqual(env.window.TVMAZE_WINDOW_MS, 10000, '...per 10 seconds (LOAD-2)');
+  assert.strictEqual(env.window.TVMAZE_RETRY_MS, 10000, 'wait 10 s after a 429 without Retry-After');
+  assert.strictEqual(env.window.TVMAZE_429_RETRIES, 2);
+  console.log('testTvmazePacingDefaults passed.');
+}
+
 (async () => {
   try {
     await testSetupBlocksAppUntilConnected();
@@ -1189,6 +1423,14 @@ async function testEpisodesLeftOnDetail() {
     await testWatchingOrdering();
     await testEpisodesLeftOnDetail();
     await testPreviousNextEpisode();
+    await testFailedShowsAreListedByName();
+    await testRetryTemporaryFailure();
+    await testBannerRetryAndForegroundRetry();
+    await testDeleteGoneShow();
+    await testShowNamesAreStored();
+    await testRateLimitedShowIsRetried();
+    await testTvmazePacing();
+    await testTvmazePacingDefaults();
     console.log('All app integration tests passed.');
     openWindows.forEach(w => w.close());
   } catch (err) {

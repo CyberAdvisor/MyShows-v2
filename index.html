@@ -393,6 +393,22 @@
   /* --- DET-6: Previous / Next episode --- */
   .step-row { display: flex; gap: 10px; margin-top: 14px; }
   .step-row button { flex: 1; }
+
+  /* --- §4.8: show load failures (LOAD-4, LOAD-7, LOAD-8) --- */
+  .load-banner {
+    border: 1px solid var(--danger);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin: 12px 0 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--danger);
+  }
+  .load-banner p { margin: 0 0 4px; }
+  .load-banner button { margin-top: 6px; color: var(--danger); border-color: var(--danger); }
+  .failed-sub { color: var(--danger); font-family: inherit; }
+  .failed-row .row-right { font-size: 20px; color: var(--text-muted); }
+  .loading-line { font-size: 13px; color: var(--text-muted); margin: 10px 0 0; }
 </style>
 <!-- Default Statcounter code for MyShows V2
 https://v2.myshows.fyi
@@ -451,8 +467,12 @@ var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
 var TVMAZE_API = 'https://api.tvmaze.com';
 var GITHUB_API = 'https://api.github.com';
 var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
-var APP_VERSION = '2.6.3';                   // VER-1: must match the newest changelog entry
+var APP_VERSION = '2.7.0';                   // VER-1: must match the newest changelog entry
 var CONFIRM_MS = 5000;                       // ADD-5: how long the add confirmation shows
+var TVMAZE_MAX_REQUESTS = 20;                // LOAD-2: TVmaze allows about 20 requests...
+var TVMAZE_WINDOW_MS = 10000;                // ...per 10 seconds from one IP address
+var TVMAZE_RETRY_MS = 10000;                 // LOAD-2: wait after a 429 with no Retry-After header
+var TVMAZE_429_RETRIES = 2;                  // LOAD-2: automatic retries before a 429 counts as failed
 
 // === PURE LOGIC START ===
 // ---------------------------------------------------------------------
@@ -707,6 +727,48 @@ function searchEntries(entries, query) {
     .sort(compareByName);
 }
 
+// --- Show load failures (§4.8) ------------------------------------------
+
+// LOAD-3: 'gone' when TVmaze says the show doesn't exist (404); anything
+// else (429 after retries, 5xx, no response, unreadable data) is
+// 'temporary'. `err.status` is set by the TVmaze client for HTTP errors.
+function classifyLoadFailure(err) {
+  return err && err.status === 404 ? 'gone' : 'temporary';
+}
+
+// LOAD-1/LOAD-4: the name to show for a library item whose TVmaze data
+// isn't loaded - its stored name, or its TVmaze id if none is stored yet.
+function storedShowName(item) {
+  return item.name || 'TVmaze show #' + item.showId;
+}
+
+// LOAD-1: copies TVmaze's current name onto a library item. Returns true
+// when the item changed (new or renamed), so the caller can save it.
+function rememberShowName(item, show) {
+  if (!show || typeof show.name !== 'string' || !show.name || item.name === show.name) return false;
+  item.name = show.name;
+  return true;
+}
+
+// LOAD-4: the Couldn't load section. `failed` maps showId -> 'temporary' |
+// 'gone'. Entries are shaped like list entries (show.name) so search
+// (LOAD-10) can match them, plus `failure`. Sorted A-Z.
+function buildFailedEntries(library, failed) {
+  return library
+    .filter(function (item) { return failed[item.showId]; })
+    .map(function (item) { return { item: item, show: { name: storedShowName(item) }, failure: failed[item.showId] }; })
+    .sort(compareByName);
+}
+
+// LOAD-2: how long to wait before the next TVmaze request so that no more
+// than `max` start within any `windowMs`. `times` are the start times of
+// earlier requests (same clock as `now`). 0 means go now.
+function throttleDelay(times, now, max, windowMs) {
+  var recent = times.filter(function (t) { return now - t < windowMs; });
+  if (recent.length < max) return 0;
+  return Math.max(1, recent[recent.length - max] + windowMs - now);
+}
+
 // --- V2 data validation (GST-2, GST-18, SET-2) --------------------------
 
 function isPlainObject(v) {
@@ -722,6 +784,7 @@ function isValidLibraryItem(item) {
   if (item.availableOrder !== undefined && typeof item.availableOrder !== 'number') return false;
   if (item.archived !== undefined && typeof item.archived !== 'boolean') return false;
   if (item.pendingCaughtUp !== undefined && typeof item.pendingCaughtUp !== 'boolean') return false;
+  if (item.name !== undefined && typeof item.name !== 'string') return false;
   if (item.pendingSeasonNumber !== undefined && item.pendingSeasonNumber !== null) {
     var p = item.pendingSeasonNumber;
     if (!isPlainObject(p) || typeof p.season !== 'number' || typeof p.number !== 'number') return false;
@@ -927,37 +990,75 @@ function clearLocalData() {
 }
 
 // ---------------------------------------------------------------------
-// 4. TVmaze client (public API, no key - unchanged from V1)
+// 4. TVmaze client (public API, no key). Every request goes through
+//    tvmazeGet, which paces requests to TVmaze's rate limit and retries
+//    a 429 automatically (LOAD-2).
 // ---------------------------------------------------------------------
 
+var tvmazeStarts = [];              // start times of recent requests (monotonic ms)
+var tvmazeTurn = Promise.resolve(); // requests take their turn in order
+
+// Monotonic milliseconds, so pacing isn't affected by clock changes.
+function monotonicNow() {
+  return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+}
+
+function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+
+// Resolves when the next TVmaze request may start (throttleDelay).
+function tvmazeSlot() {
+  function takeTurn() {
+    var now = monotonicNow();
+    tvmazeStarts = tvmazeStarts.filter(function (t) { return now - t < TVMAZE_WINDOW_MS; });
+    var delay = throttleDelay(tvmazeStarts, now, TVMAZE_MAX_REQUESTS, TVMAZE_WINDOW_MS);
+    if (delay > 0) return sleep(delay).then(takeTurn);
+    tvmazeStarts.push(now);
+  }
+  tvmazeTurn = tvmazeTurn.then(takeTurn);
+  return tvmazeTurn;
+}
+
+// Seconds from a Retry-After header as ms, or the default wait.
+function retryAfterMs(response) {
+  var secs = Number(response.headers && response.headers.get && response.headers.get('Retry-After'));
+  return secs > 0 ? secs * 1000 : TVMAZE_RETRY_MS;
+}
+
+// Paced GET returning parsed JSON. HTTP errors reject with an Error whose
+// `status` is the response code (LOAD-3); a 429 is retried up to
+// TVMAZE_429_RETRIES times after waiting first.
+function tvmazeGet(path, attempt) {
+  attempt = attempt || 0;
+  return tvmazeSlot().then(function () { return fetch(TVMAZE_API + path); }).then(function (r) {
+    if (r.status === 429 && attempt < TVMAZE_429_RETRIES) {
+      return sleep(retryAfterMs(r)).then(function () { return tvmazeGet(path, attempt + 1); });
+    }
+    if (!r.ok) {
+      var err = new Error('TVmaze returned ' + r.status);
+      err.status = r.status;
+      throw err;
+    }
+    return r.json();
+  });
+}
+
 function searchShows(query) {
-  return fetch(TVMAZE_API + '/search/shows?q=' + encodeURIComponent(query))
-    .then(function (r) {
-      if (!r.ok) throw new Error('TVmaze returned ' + r.status);
-      return r.json();
-    });
+  return tvmazeGet('/search/shows?q=' + encodeURIComponent(query));
 }
 
 // Just a show's name, for listing V1 entries that weren't imported.
 // Resolves to null when it can't be looked up.
 function fetchShowName(showId) {
-  return fetch(TVMAZE_API + '/shows/' + showId)
-    .then(function (r) { return r.ok ? r.json() : null; })
+  return tvmazeGet('/shows/' + showId)
     .then(function (show) { return show && show.name ? show.name : null; }, function () { return null; });
 }
 
 // Show info plus every episode. Uses ?specials=1 because ?embed=episodes
 // silently drops specials.
 function fetchShowWithEpisodes(showId) {
-  function getJson(url) {
-    return fetch(url).then(function (r) {
-      if (!r.ok) throw new Error('TVmaze returned ' + r.status);
-      return r.json();
-    });
-  }
   return Promise.all([
-    getJson(TVMAZE_API + '/shows/' + showId),
-    getJson(TVMAZE_API + '/shows/' + showId + '/episodes?specials=1')
+    tvmazeGet('/shows/' + showId),
+    tvmazeGet('/shows/' + showId + '/episodes?specials=1')
   ]).then(function (results) {
     var show = results[0];
     show._embedded = { episodes: results[1] };
@@ -1215,6 +1316,7 @@ function disconnect() {
   sync.status = 'synced';
   state.library = [];
   state.computed = {};
+  state.failed = {};
   state.setup = freshSetupState();
   state.view = 'setup';
   render();
@@ -1232,6 +1334,9 @@ var state = {
   view: 'loading', // setup | loading | list | add | detail | settings | sync | backup | importreport
   library: [],
   computed: {},     // showId -> { show, episodes, status }
+  failed: {},       // showId -> 'temporary' | 'gone' (LOAD-3); never stored
+  loading: {},      // showId -> true while its TVmaze data is being fetched (LOAD-8)
+  failedScreen: { busy: false, error: '' }, // LOAD-6 Retry state
   segment: 'watching',
   listQuery: '',
   justAddedShowId: null, // ADD-5: row highlighted after adding
@@ -1481,14 +1586,12 @@ function finishConnect(token, gistId, payload) {
   state.setup = freshSetupState();
   state.library = payload.library;
   state.computed = {};
+  state.failed = {};
   writeLocalLibrary(state.library);
   state.segment = 'watching';
-  state.view = 'loading';
+  state.view = 'list';
   render();
-  return refreshComputedFor(state.library).then(function () {
-    state.view = 'list';
-    render();
-  });
+  return refreshComputedFor(state.library);
 }
 
 // --- Main display (LIST, SRCH) --------------------------------------------
@@ -1515,9 +1618,9 @@ var ABOUT_LINK_HTML = '<a class="about-link" id="about-link" href="' + README_UR
 
 function renderList() {
   var html = appHeaderHtml();
-  if (state.errorBanner) html += '<p class="error-text">' + escapeHtml(state.errorBanner) + '</p>';
 
   if (state.library.length === 0) {
+    if (state.errorBanner) html += '<p class="error-text">' + escapeHtml(state.errorBanner) + '</p>';
     html += '<div class="empty">No shows yet.<br>Tap Add Show to add the first one.</div>';
     root.innerHTML = html + ABOUT_LINK_HTML;
     bindChrome();
@@ -1537,24 +1640,47 @@ function renderList() {
   updateListBody();
 }
 
-// Rebuilds the segment control and list (or search results) only.
+// LOAD-7: names every failed show; Retry reloads the temporary ones.
+function loadBannerHtml(failedEntries) {
+  if (failedEntries.length === 0) return '';
+  function names(kind) {
+    return failedEntries.filter(function (e) { return e.failure === kind; })
+      .map(function (e) { return escapeHtml(e.show.name); }).join(', ');
+  }
+  var temporary = names('temporary');
+  var gone = names('gone');
+  var html = '<div class="load-banner" id="load-banner">';
+  if (temporary) html += '<p>Couldn’t load: ' + temporary + '</p>';
+  if (gone) html += '<p>No longer on TVmaze: ' + gone + ' — tap it below to delete</p>';
+  if (temporary) html += '<button id="retry-failed-btn">Retry</button>';
+  return html + '</div>';
+}
+
+// Rebuilds the banners, segment control and list (or search results) only.
 function updateListBody() {
   var body = document.getElementById('list-body');
   if (!body) return;
   var entries = currentEntries();
+  var failedEntries = buildFailedEntries(state.library, state.failed);
+  var loadingCount = Object.keys(state.loading).length;
   var html = '';
+  if (state.errorBanner) html += '<p class="error-text">' + escapeHtml(state.errorBanner) + '</p>';
+  html += loadBannerHtml(failedEntries);
 
   if (state.listQuery.trim()) {
-    // SRCH-3/4: all segments, each row tagged with its group.
-    var results = searchEntries(entries, state.listQuery);
+    // SRCH-3/4: all segments, each row tagged with its group; failed shows
+    // match by stored name (LOAD-10).
+    var results = searchEntries(entries.concat(failedEntries), state.listQuery);
     html += '<p class="section-label">Results in all groups</p>';
     if (results.length === 0) {
       html += '<div class="empty">No shows match "' + escapeHtml(state.listQuery.trim()) + '"</div>';
     } else {
-      html += '<div class="card-list">' + results.map(function (e) { return renderRow(e, groupTagLabel(e.status)); }).join('') + '</div>';
+      html += '<div class="card-list">' + results.map(function (e) {
+        return e.failure ? renderFailedRow(e, 'Couldn’t load') : renderRow(e, groupTagLabel(e.status));
+      }).join('') + '</div>';
     }
     body.innerHTML = html;
-    bindRows(results);
+    bindListBody(results);
     return;
   }
 
@@ -1566,6 +1692,16 @@ function updateListBody() {
       SEGMENT_LABELS[key] + '<span class="count">' + counts[key] + '</span></button>';
   });
   html += '</div>';
+
+  // LOAD-8: say how many are still loading so they don't look missing.
+  if (loadingCount) {
+    html += '<p class="loading-line" id="loading-line">Loading ' + loadingCount + ' more show' + (loadingCount === 1 ? '' : 's') + '…</p>';
+  }
+  // LOAD-4: failed shows sit at the top of every segment.
+  if (failedEntries.length) {
+    html += '<p class="section-label">Couldn’t load</p><div class="card-list" id="failed-list">' +
+      failedEntries.map(function (e) { return renderFailedRow(e); }).join('') + '</div>';
+  }
 
   var shown;
   if (state.segment === 'watching') {
@@ -1580,13 +1716,20 @@ function updateListBody() {
     shown = segments[state.segment];
     html += sectionHtml('', shown);
   }
-  if (shown.length === 0) html += '<div class="empty">' + EMPTY_TEXT[state.segment] + '</div>';
+  if (shown.length === 0 && !loadingCount) html += '<div class="empty">' + EMPTY_TEXT[state.segment] + '</div>';
 
   body.innerHTML = html;
   body.querySelectorAll('.segments button').forEach(function (b) {
     b.onclick = function () { state.segment = b.getAttribute('data-segment'); updateListBody(); };
   });
-  bindRows(shown);
+  bindListBody(failedEntries.concat(shown));
+}
+
+// Wires the rows and the banner's Retry button in the list body.
+function bindListBody(entries) {
+  bindRows(entries);
+  var retry = document.getElementById('retry-failed-btn');
+  if (retry) retry.onclick = function () { retryFailedShows(); updateListBody(); };
 }
 
 // A titled card list; omitted entirely when empty (LIST-11, LIST-14).
@@ -1631,6 +1774,23 @@ function renderRow(e, tag) {
     '</div>';
 }
 
+// LOAD-4: a show whose TVmaze data couldn't be loaded - stored name (or
+// TVmaze id), platform, and what tapping it does.
+var FAILED_ROW_TEXT = {
+  temporary: 'Couldn’t load — tap to retry',
+  gone: 'No longer on TVmaze — tap to delete'
+};
+
+function renderFailedRow(e, tag) {
+  var item = e.item;
+  var platformText = item.platform ? ' <span class="platform">- ' + escapeHtml(item.platform) + '</span>' : '';
+  var tagHtml = tag ? '<span class="group-tag">' + escapeHtml(tag) + '</span>' : '';
+  return '<div class="row failed-row" id="row-' + item.showId + '">' +
+    '<div><p class="row-title">' + escapeHtml(e.show.name) + platformText + tagHtml + '</p>' +
+    '<p class="row-sub failed-sub">' + FAILED_ROW_TEXT[e.failure] + '</p></div>' +
+    '<div class="row-right">›</div></div>';
+}
+
 function bindRows(entries) {
   entries.forEach(function (e) {
     var id = e.item.showId;
@@ -1646,9 +1806,41 @@ function bindRows(entries) {
 
 // --- Show detail (DET-1: same as V1) ----------------------------------------
 
+// LOAD-6: the screen for a show that couldn't be loaded. Temporary
+// failures offer Retry; gone shows offer Delete series (as DET-3).
+var FAILED_SCREEN_TEXT = {
+  temporary: 'This show’s details couldn’t be loaded from TVmaze right now. Your place in the show is kept.',
+  gone: 'TVmaze no longer has this show, so its episodes can’t be tracked. If it was replaced by a new listing, delete it and add the show again with Add Show.'
+};
+
+function renderFailedDetail(item) {
+  var fs = state.failedScreen;
+  var busy = fs.busy || !!state.loading[item.showId];
+  var failure = state.failed[item.showId] || 'temporary'; // while retrying, it is no longer marked
+  var html = appHeaderHtml();
+  html += screenTitleHtml(storedShowName(item), true);
+  if (item.platform) {
+    html += '<p class="field-label">Watching on</p><p style="margin:0 0 16px; font-size:15px;">' + escapeHtml(item.platform) + '</p>';
+  }
+  html += '<p class="synopsis" id="failed-message">' + FAILED_SCREEN_TEXT[failure] + '</p>';
+  if (failure === 'gone') {
+    html += '<button class="wide danger" id="failed-delete-btn">Delete series</button>';
+  } else {
+    html += '<button class="primary" id="failed-retry-btn"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Retrying…' : 'Retry') + '</button>';
+    if (fs.error) html += '<p class="error-text" style="margin-top:12px;">' + escapeHtml(fs.error) + '</p>';
+  }
+  root.innerHTML = html;
+  bindChrome(openList);
+  var del = document.getElementById('failed-delete-btn');
+  if (del) del.onclick = function () { removeShow(item.showId); };
+  var retry = document.getElementById('failed-retry-btn');
+  if (retry) retry.onclick = function () { retryFromFailedScreen(item.showId); };
+}
+
 function renderDetail() {
   var item = state.library.find(function (i) { return i.showId === state.detailShowId; });
   var c = state.computed[state.detailShowId];
+  if (item && !c && (state.failed[item.showId] || state.loading[item.showId])) return renderFailedDetail(item);
   if (!item || !c) { state.view = 'list'; return render(); }
 
   var status = withArchiveOverride(c.status, item.archived);
@@ -1898,7 +2090,7 @@ function submitAddShow() {
   af.error = addFormError(af);
   if (af.error) { renderAddForm(); return; }
 
-  var newItem = { showId: af.selected.id, platform: af.platform.trim(), watchedEpisodeId: null };
+  var newItem = { showId: af.selected.id, name: af.selected.name, platform: af.platform.trim(), watchedEpisodeId: null };
   if (af.progress === 'caughtup') newItem.pendingCaughtUp = true;
   if (af.progress === 'lastwatched') newItem.pendingSeasonNumber = { season: parseInt(af.season, 10), number: parseInt(af.episode, 10) };
   var name = af.selected.name;
@@ -2095,10 +2287,11 @@ function handleRestoreFile(file) {
     statusEl.innerHTML = '';
     state.library = result.payload.library;
     state.computed = {};
+    state.failed = {};
     saveLibrary(state.library);
-    state.view = 'loading';
+    state.view = 'list';
     render();
-    refreshComputedFor(state.library).then(function () { state.view = 'list'; render(); });
+    refreshComputedFor(state.library);
   };
   reader.onerror = function () {
     statusEl.innerHTML = '<p class="error-text">Could not read that file.</p>';
@@ -2124,6 +2317,7 @@ function importV1Backup(items, statusEl) {
 
   state.library = split.importable;
   state.computed = {};
+  state.failed = {};
   saveLibrary(state.library);
   state.view = 'loading';
   render();
@@ -2199,7 +2393,12 @@ function openSync() {
   render();
 }
 function openAddFlow() { state.addFlow = freshAddFlow(); state.view = 'add'; render(); }
-function openDetail(showId) { state.detailShowId = showId; state.view = 'detail'; render(); }
+function openDetail(showId) {
+  state.detailShowId = showId;
+  state.failedScreen = { busy: false, error: '' };
+  state.view = 'detail';
+  render();
+}
 
 function findItem(showId) { return state.library.find(function (i) { return i.showId === showId; }); }
 
@@ -2239,6 +2438,7 @@ function stepEpisode(showId, direction) {
 function removeShow(showId) {
   state.library = state.library.filter(function (i) { return i.showId !== showId; });
   delete state.computed[showId];
+  delete state.failed[showId];
   saveLibrary(state.library);
   state.view = 'list';
   render();
@@ -2269,10 +2469,20 @@ function reactivateShow(showId) {
 
 // Loads TVmaze data for the given items and computes their status.
 // Resolves a typed season/episode into an episode id on first load.
+// A show that fails is recorded in state.failed (LOAD-3) and listed in
+// the Couldn't load section; state.loading tracks progress (LOAD-8).
+// The list updates as each show settles.
 function refreshComputedFor(items, options) {
   var isNewAddition = options && options.isNewAddition;
-  return Promise.all(items.map(function (item) {
-    return fetchShowWithEpisodes(item.showId).then(function (show) {
+  return Promise.all(items.map(function (requested) {
+    var showId = requested.showId;
+    delete state.failed[showId];
+    state.loading[showId] = true;
+    return fetchShowWithEpisodes(showId).then(function (show) {
+      // A sync may have replaced the library while this loaded: use the
+      // current item, so its progress is the one computed and saved.
+      var item = findItem(showId) || requested;
+      var inLibrary = state.library.indexOf(item) !== -1;
       var episodes = sortedEpisodes(show._embedded && show._embedded.episodes ? show._embedded.episodes : []);
       var changed = false;
 
@@ -2297,27 +2507,85 @@ function refreshComputedFor(items, options) {
         item.availableOrder = nextTopAvailableOrder(state.library);
         changed = true;
       }
-      state.computed[item.showId] = { show: show, episodes: episodes, status: status };
+      state.computed[showId] = { show: show, episodes: episodes, status: status };
       // Only items still in the library are saved (a sync may have removed it).
-      if (changed && state.library.indexOf(item) !== -1) saveLibrary(state.library);
-    }).catch(function () {
-      state.errorBanner = 'Could not load data for one or more shows.';
+      // A name alone (LOAD-1) is saved on this device only: it must never
+      // make this device look newer than the gist. It reaches the gist with
+      // the next real change.
+      var renamed = rememberShowName(item, show);
+      if (inLibrary && changed) saveLibrary(state.library);
+      else if (inLibrary && renamed) writeLocalLibrary(state.library);
+    }).catch(function (err) {
+      if (findItem(showId)) state.failed[showId] = classifyLoadFailure(err);
+    }).then(function () {
+      delete state.loading[showId];
+      onShowSettled(showId);
     });
   }));
 }
 
+// Redraws whatever shows load progress after one show finishes loading:
+// the list body (never the search input, which iOS would drop focus from)
+// or that show's screen.
+function onShowSettled(showId) {
+  if (state.view === 'list') updateListBody();
+  else if (state.view === 'detail' && state.detailShowId === showId && !state.failedScreen.busy) render();
+}
+
+// LOAD-5/LOAD-6/LOAD-7/LOAD-11: loads the given shows again (default: every
+// temporary failure). Resolves when they have all settled.
+function retryFailedShows(showIds) {
+  var ids = showIds || Object.keys(state.failed)
+    .filter(function (id) { return state.failed[id] === 'temporary'; })
+    .map(Number);
+  var items = ids.map(findItem).filter(Boolean);
+  return refreshComputedFor(items);
+}
+
+// LOAD-6: Retry on the failed-show screen. On success, back to the main
+// display on the show's segment (as after adding, OD-10).
+function retryFromFailedScreen(showId) {
+  state.failedScreen = { busy: true, error: '' };
+  render();
+  retryFailedShows([showId]).then(function () {
+    state.failedScreen = { busy: false, error: '' };
+    var c = state.computed[showId];
+    var item = findItem(showId);
+    if (c && item) {
+      state.segment = displaySegment(withArchiveOverride(c.status, item.archived));
+      state.view = 'list';
+      render();
+      showToast(c.show.name + ' loaded');
+      return;
+    }
+    if (state.view !== 'detail' || state.detailShowId !== showId) return;
+    if (state.failed[showId] === 'temporary') {
+      state.failedScreen.error = 'Still couldn’t load it. Check your connection, or try again later.';
+    }
+    render();
+  });
+}
+
 // After the library is replaced by a pull: recompute cached shows,
-// fetch any new ones, drop removed ones.
+// fetch any new ones (including ones that failed before), drop removed ones.
+// Shows already loading are left to finish (they use the current item).
 function refreshAfterLibraryChange() {
   var keep = {};
   var missing = [];
+  var renamed = false;
   state.library.forEach(function (item) {
     keep[item.showId] = true;
     var c = state.computed[item.showId];
-    if (c) c.status = computeShowStatus(c.show, c.episodes, item.watchedEpisodeId);
-    else missing.push(item);
+    if (c) {
+      c.status = computeShowStatus(c.show, c.episodes, item.watchedEpisodeId);
+      if (rememberShowName(item, c.show)) renamed = true;
+    } else if (!state.loading[item.showId]) {
+      missing.push(item);
+    }
   });
+  if (renamed) writeLocalLibrary(state.library); // LOAD-1: device only
   Object.keys(state.computed).forEach(function (id) { if (!keep[id]) delete state.computed[id]; });
+  Object.keys(state.failed).forEach(function (id) { if (!keep[id]) delete state.failed[id]; });
   return refreshComputedFor(missing);
 }
 
@@ -2341,8 +2609,11 @@ document.addEventListener('focusout', function (e) { if (isTextField(e.target)) 
 
 // OD-6: pull whenever the app comes back to the foreground; also retry
 // when the connection returns.
+// LOAD-11: shows that couldn't load are also tried again on return.
 document.addEventListener('visibilitychange', function () {
-  if (document.visibilityState === 'visible' && isConnected() && !automaticSyncBlocked()) syncNow();
+  if (document.visibilityState !== 'visible' || !isConnected()) return;
+  retryFailedShows();
+  if (!automaticSyncBlocked()) syncNow();
 });
 window.addEventListener('online', function () {
   if (isConnected() && !automaticSyncBlocked()) syncNow();
@@ -2355,14 +2626,12 @@ function init() {
     render();
     return;
   }
-  // GST-3: render from the working copy at once, then pull.
+  // GST-3: render from the working copy at once, then pull. Shows fill
+  // in as their TVmaze data arrives (LOAD-8).
   state.library = loadLocalLibrary();
-  state.view = state.library.length ? 'loading' : 'list';
+  state.view = 'list';
   render();
-  refreshComputedFor(state.library).then(function () {
-    if (state.view === 'loading') state.view = 'list';
-    render();
-  });
+  refreshComputedFor(state.library);
   syncNow();
 }
 
