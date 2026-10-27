@@ -483,10 +483,10 @@ var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
 var TVMAZE_API = 'https://api.tvmaze.com';
 var GITHUB_API = 'https://api.github.com';
 var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
-var APP_VERSION = '2.8.0';                   // VER-1: must match the newest changelog entry
+var APP_VERSION = '2.8.1';                   // VER-1: must match the newest changelog entry
 var CONFIRM_MS = 5000;                       // ADD-5: how long the add confirmation shows
-var TVMAZE_MAX_REQUESTS = 20;                // LOAD-2: TVmaze allows about 20 requests...
-var TVMAZE_WINDOW_MS = 10000;                // ...per 10 seconds from one IP address
+var TVMAZE_MAX_REQUESTS = 20;                // LOAD-2: once TVmaze has refused a request (429), pace to about 20 requests...
+var TVMAZE_WINDOW_MS = 10000;                // ...per 10 seconds, TVmaze's limit from one IP address
 var TVMAZE_RETRY_MS = 10000;                 // LOAD-2: wait after a 429 with no Retry-After header
 var TVMAZE_429_RETRIES = 2;                  // LOAD-2: automatic retries before a 429 counts as failed
 var TVMAZE_TIMEOUT_MS = 20000;               // LOAD-16: a request unanswered this long is abandoned
@@ -826,8 +826,8 @@ function buildFailedEntries(library, failed) {
     .sort(compareByName);
 }
 
-// LOAD-2: how long to wait before the next TVmaze request so that no more
-// than `max` start within any `windowMs`. `times` are the start times of
+// LOAD-2: while pacing after a 429, how long to wait before the next TVmaze
+// request so that no more than `max` start within any `windowMs`. `times` are the start times of
 // earlier requests (same clock as `now`). 0 means go now.
 function throttleDelay(times, now, max, windowMs) {
   var recent = times.filter(function (t) { return now - t < windowMs; });
@@ -1062,12 +1062,15 @@ function clearLocalData() {
 
 // ---------------------------------------------------------------------
 // 4. TVmaze client (public API, no key). Every request goes through
-//    tvmazeGet, which paces requests to TVmaze's rate limit and retries
-//    a 429 automatically (LOAD-2).
+//    tvmazeGet. Requests go out at once, so answers the browser already
+//    has cached arrive immediately; only after TVmaze refuses one (429)
+//    are requests paced to its rate limit, and the refused one is retried
+//    automatically (LOAD-2).
 // ---------------------------------------------------------------------
 
 var tvmazeStarts = [];              // start times of recent requests (monotonic ms)
 var tvmazeTurn = Promise.resolve(); // requests take their turn in order
+var tvmazePacedUntil = 0;           // pace requests until this time (monotonic ms); 0 = not pacing
 
 // Monotonic milliseconds, so pacing isn't affected by clock changes.
 function monotonicNow() {
@@ -1076,13 +1079,19 @@ function monotonicNow() {
 
 function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
 
-// Resolves when the next TVmaze request may start (throttleDelay).
+// Resolves when the next TVmaze request may start: at once normally, or
+// when throttleDelay allows while pacing after a 429. Pacing lasts until a
+// full window passes with no paced request, so a queue of retries drains
+// at TVmaze's pace before requests go out freely again.
 function tvmazeSlot() {
   function takeTurn() {
     var now = monotonicNow();
     tvmazeStarts = tvmazeStarts.filter(function (t) { return now - t < TVMAZE_WINDOW_MS; });
-    var delay = throttleDelay(tvmazeStarts, now, TVMAZE_MAX_REQUESTS, TVMAZE_WINDOW_MS);
-    if (delay > 0) return sleep(delay).then(takeTurn);
+    if (now < tvmazePacedUntil) {
+      var delay = throttleDelay(tvmazeStarts, now, TVMAZE_MAX_REQUESTS, TVMAZE_WINDOW_MS);
+      if (delay > 0) return sleep(delay).then(takeTurn);
+      tvmazePacedUntil = Math.max(tvmazePacedUntil, now + TVMAZE_WINDOW_MS);
+    }
     tvmazeStarts.push(now);
   }
   tvmazeTurn = tvmazeTurn.then(takeTurn);
@@ -1112,14 +1121,18 @@ function fetchWithTimeout(url) {
     function (err) { clearTimeout(timer); throw err; });
 }
 
-// Paced GET returning parsed JSON. HTTP errors reject with an Error whose
-// `status` is the response code (LOAD-3); a 429 is retried up to
-// TVMAZE_429_RETRIES times after waiting first.
+// GET returning parsed JSON. HTTP errors reject with an Error whose
+// `status` is the response code (LOAD-3). A 429 turns pacing on and is
+// retried up to TVMAZE_429_RETRIES times after waiting first.
 function tvmazeGet(path, attempt) {
   attempt = attempt || 0;
   return tvmazeSlot().then(function () { return fetchWithTimeout(TVMAZE_API + path); }).then(function (r) {
-    if (r.status === 429 && attempt < TVMAZE_429_RETRIES) {
-      return sleep(retryAfterMs(r)).then(function () { return tvmazeGet(path, attempt + 1); });
+    if (r.status === 429) {
+      var waitMs = retryAfterMs(r);
+      tvmazePacedUntil = Math.max(tvmazePacedUntil, monotonicNow() + waitMs + TVMAZE_WINDOW_MS);
+      if (attempt < TVMAZE_429_RETRIES) {
+        return sleep(waitMs).then(function () { return tvmazeGet(path, attempt + 1); });
+      }
     }
     if (!r.ok) {
       var err = new Error('TVmaze returned ' + r.status);

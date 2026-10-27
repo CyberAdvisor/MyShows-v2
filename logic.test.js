@@ -524,6 +524,11 @@ const TODAY = '2026-07-12';
   const newest = changelog.match(/class="entry-date">[^<]*<span class="tag">Version ([\d.]+)/);
   assert.ok(newest, 'changelog entries are tagged with a version');
   assert.strictEqual(newest[1], APP_VERSION, 'APP_VERSION matches the newest changelog entry');
+  // DOC-5: the guide says which version it describes.
+  const guide = require('fs').readFileSync(require('path').join(__dirname, 'guide', 'index.html'), 'utf8');
+  const guideVersion = guide.match(/<span id="guide-version">([\d.]+)<\/span>/);
+  assert.ok(guideVersion, 'the guide states its version');
+  assert.strictEqual(guideVersion[1], APP_VERSION, 'the guide is for the current APP_VERSION');
 }
 
 // --- LIST-14: Watching order ---

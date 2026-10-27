@@ -21,7 +21,7 @@
 - Validate before every push (GST-18). Never write a library to the gist that fails `isValidLibrary`.
 - Treat `watchedEpisodeId` as the persistent progress identifier. Do not persist season/episode numbers instead: several TVmaze specials can share a season with no episode number.
 - Fetch episodes with `/shows/:id/episodes?specials=1`. The `?embed=episodes` shortcut omits specials.
-- Every TVmaze request goes through `tvmazeGet()`, which paces requests to TVmaze’s rate limit and retries a 429 (CLAUDE.md LOAD-2). Never call `fetch` on TVmaze directly.
+- Every TVmaze request goes through `tvmazeGet()`. Requests go out at once; only after TVmaze refuses one (429) are they paced to its rate limit, and the refused one is retried (CLAUDE.md LOAD-2). Never pace up front: answers the browser has cached would wait their turn too, and startup would slow down for nothing. Never call `fetch` on TVmaze directly.
 - A show that fails to load must never disappear: `refreshComputedFor()` records it in `state.failed` (temporary or gone, LOAD-3) and the main display lists it by its stored `name` (LOAD-4). Failure state is never stored or synced.
 - A show name or last-watched code (`watchedCode`) filled in by a load is written with `writeLocalLibrary()`, not `saveLibrary()`: it must not push or make this device look newer than the gist (LOAD-1, LOAD-13). Keep `watchedCode` current with `rememberWatchedCode()` wherever progress changes.
 - Never treat a stored `watchedEpisodeId` that's missing from TVmaze's list as "not started": that show is a `changed` failure (LOAD-12).
@@ -49,5 +49,6 @@ Add or update tests for every behavior change — especially episode ordering, p
 ## Documentation and deployment
 
 - Update `README.md`, `guide/index.html`, `changelog/index.html` and `CLAUDE.md` when a user-visible workflow changes.
+- Every release raises `APP_VERSION` and must also add the matching changelog entry and set the guide's version line (`<span id="guide-version">`) to the same number (CLAUDE.md VER-1, DOC-5). `logic.test.js` fails if any of the three differ.
 - GitHub Pages serves this repository as a static HTTPS site; `CNAME` sets v2.myshows.fyi. Avoid anything that assumes server-side routing or APIs.
 - Keep privacy statements accurate: external calls are TVmaze (show data), GitHub (the user's own gist) and the documented Statcounter beacon. The token stays on the device and is sent only to GitHub.

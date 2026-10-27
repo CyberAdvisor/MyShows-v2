@@ -51,7 +51,7 @@ Hosted at **https://v2.myshows.fyi**
 - **Suspend a series without deleting it** — from the detail screen, tap "Suspend series" to move a show into Waiting › Suspended, with your last watched episode and the date recorded. Tap "Reactivate" to pick back up exactly where you left off
 - **Syncs automatically** — every change is saved on your device immediately and sent to your gist about two seconds later. When you open the app on another device, it picks up the latest list
 
-The version number is shown under "My Shows" on every screen; tap it to see the changelog.
+The version number is shown under "My Shows" on every screen; tap it to see the changelog. The guide says which version it describes.
 
 ## Getting started
 
@@ -130,7 +130,7 @@ node logic.test.js
 node app.test.js
 ```
 
-`logic.test.js` unit-tests the pure logic, read straight out of `index.html`. `app.test.js` loads the real `index.html` into jsdom with mocked TVmaze and GitHub APIs and drives it through setup, adding shows, segments, search, sync, every sync failure, shows that can’t be loaded from TVmaze (named, retried or deleted, with requests paced to TVmaze’s rate limit and a time limit), episodes changed on TVmaze, the local date, refreshing on return to the app, and a damaged copy on the device.
+`logic.test.js` unit-tests the pure logic, read straight out of `index.html`. `app.test.js` loads the real `index.html` into jsdom with mocked TVmaze and GitHub APIs and drives it through setup, adding shows, segments, search, sync, every sync failure, shows that can’t be loaded from TVmaze (named, retried or deleted; requests sent at once and paced only after TVmaze refuses one; a time limit), episodes changed on TVmaze, the local date, refreshing on return to the app, and a damaged copy on the device.
 
 ## Customizing this with Claude
 

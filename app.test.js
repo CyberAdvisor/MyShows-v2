@@ -185,7 +185,7 @@ async function start(opts) {
   freezeDate(window, '2026-07-12T12:00:00');
   // opts.tvmaze(url) may return a Promise<response> to override the mock
   // TVmaze for that request (failures, 404s, 429s); env.tvmazeLog records
-  // each TVmaze request with the real time it started (pacing, LOAD-2).
+  // each TVmaze request with the real time it started (LOAD-2).
   const env = { window, doc: window.document, gh, confirmAnswer: true, confirmMessages: [], tvmazeLog: [] };
   window.fetch = (url, options) => {
     if (url.startsWith('https://api.github.com')) return gh.handle(url, options);
@@ -1360,25 +1360,72 @@ async function testRateLimitedShowIsRetried() {
   console.log('testRateLimitedShowIsRetried passed.');
 }
 
-async function testTvmazePacing() {
-  // LOAD-2: no more than TVMAZE_MAX_REQUESTS start in any TVMAZE_WINDOW_MS,
-  // and the list fills in as shows arrive with a loading line (LOAD-8).
+async function testTvmazeRequestsGoOutAtOnce() {
+  // LOAD-2: with no refusal from TVmaze, every request starts at once (no
+  // pacing), so the whole list appears straight away. Pacing constants are
+  // made tiny so any pacing would show as gaps between requests.
   // Four shows (eight requests), none of them in Watching.
   const library = mixedLibrary().filter(i => i.showId !== 501);
   const env = await start({ library, constants: { TVMAZE_MAX_REQUESTS: 2, TVMAZE_WINDOW_MS: 150 } });
-  // start() waits 80 ms: only the first show's two requests can have started.
-  assert.strictEqual(text(env, '#loading-line'), 'Loading 3 more shows…', 'loading line while shows are still arriving');
+  const starts = env.tvmazeLog.map(r => r.at);
+  assert.strictEqual(starts.length, 8, 'every request already started');
+  assert.ok(starts[7] - starts[0] < 30, 'no gaps between requests (' + Math.round(starts[7] - starts[0]) + ' ms)');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting3', 'Done1'], 'every show loaded straight away');
+  assert.ok(!env.doc.getElementById('loading-line'), 'nothing left loading');
+  console.log('testTvmazeRequestsGoOutAtOnce passed.');
+}
+
+async function testLoadingLine() {
+  // LOAD-8: while a show is still arriving, the loading line counts it and
+  // the empty-state message is held back; both settle once it arrives.
+  const library = mixedLibrary().filter(i => i.showId !== 501);
+  const slow = url => /\/shows\/777(\/|$)/.test(url) ? wait(250).then(() => tvmazeFetch(url)) : null;
+  const env = await start({ library, tvmaze: slow });
+  assert.strictEqual(text(env, '#loading-line'), 'Loading 1 more show…', 'loading line while a show is still arriving');
   assert.ok(!env.doc.querySelector('#list-body .empty'), 'no "nothing to watch" message while shows are still loading');
-  await wait(700);
+  await wait(300);
   assert.ok(!env.doc.getElementById('loading-line'), 'loading line gone when done');
   assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting3', 'Done1'], 'every show loaded');
   assert.ok(env.doc.querySelector('#list-body .empty'), 'empty Watching message once loading is finished');
-  const starts = env.tvmazeLog.map(r => r.at);
-  assert.strictEqual(starts.length, 8);
-  for (let i = 2; i < starts.length; i++) {
-    assert.ok(starts[i] - starts[i - 2] >= 145, 'request ' + i + ' waited for the window (' + Math.round(starts[i] - starts[i - 2]) + ' ms)');
+  console.log('testLoadingLine passed.');
+}
+
+async function testTvmazePacingAfterRefusal() {
+  // LOAD-2: a 429 turns pacing on: the retry, and requests made while
+  // pacing, keep to TVMAZE_MAX_REQUESTS per TVMAZE_WINDOW_MS. Once a full
+  // window passes with no paced request, requests go out at once again.
+  const library = mixedLibrary().filter(i => i.showId !== 501);
+  let refusals = 1;
+  // The refusal arrives after a short network delay, as a real one would,
+  // so the first eight requests are all sent before it.
+  const tooFast = url => (/\/shows\/777$/.test(url) && refusals-- > 0) ? wait(10).then(() => response(429, {})) : null;
+  const env = await start({ library, tvmaze: tooFast, constants: { TVMAZE_MAX_REQUESTS: 2, TVMAZE_WINDOW_MS: 300, TVMAZE_RETRY_MS: 20 } });
+  // Timeline: burst at 0, refusal at ~10, retry waits for the window (~300),
+  // pacing lasts until a window after the last paced request.
+  const first = env.tvmazeLog[0].at;
+  assert.ok(env.tvmazeLog[7].at - first < 30, 'the first eight requests went out at once');
+  await wait(400);
+  const retry = env.tvmazeLog.filter(r => /\/shows\/777$/.test(r.url))[1];
+  assert.ok(retry, 'refused request retried');
+  assert.ok(retry.at - first >= 295, 'retry waited for the window (' + Math.round(retry.at - first) + ' ms)');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching0', 'Waiting3', 'Done1'], 'refused show loaded after the retry');
+
+  // Still pacing: four requests made now are spaced two per window.
+  const before = env.tvmazeLog.length;
+  await Promise.all([501, 777, 999, 888].map(id => env.window.tvmazeGet('/shows/' + id)));
+  const paced = env.tvmazeLog.slice(before).map(r => r.at);
+  assert.strictEqual(paced.length, 4);
+  for (let i = 2; i < paced.length; i++) {
+    assert.ok(paced[i] - paced[i - 2] >= 295, 'paced request ' + i + ' waited for the window (' + Math.round(paced[i] - paced[i - 2]) + ' ms)');
   }
-  console.log('testTvmazePacing passed.');
+
+  // A quiet window later, pacing is off again.
+  await wait(350);
+  const after = env.tvmazeLog.length;
+  await Promise.all([501, 777, 999, 888].map(id => env.window.tvmazeGet('/shows/' + id)));
+  const free = env.tvmazeLog.slice(after).map(r => r.at);
+  assert.ok(free[3] - free[0] < 30, 'requests go out at once again (' + Math.round(free[3] - free[0]) + ' ms)');
+  console.log('testTvmazePacingAfterRefusal passed.');
 }
 
 async function testTvmazePacingDefaults() {
@@ -1607,7 +1654,9 @@ async function testSearchErrorsInPlainWords() {
     await testDeleteGoneShow();
     await testShowNamesAreStored();
     await testRateLimitedShowIsRetried();
-    await testTvmazePacing();
+    await testTvmazeRequestsGoOutAtOnce();
+    await testLoadingLine();
+    await testTvmazePacingAfterRefusal();
     await testTvmazePacingDefaults();
     await testChangedEpisodesAreNotReset();
     await testWatchedCodeIsKept();
