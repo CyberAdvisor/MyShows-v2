@@ -475,6 +475,7 @@ referrerPolicy="no-referrer-when-downgrade"></a></div></noscript>
 
 var LIBRARY_KEY = 'my-shows-library-v2';     // DATA-1: local working copy
 var SYNC_KEY = 'my-shows-sync-v2';           // DATA-5: token, gist id, sync times
+var SHOW_DATA_PREFIX = 'my-shows-show-v2:';  // DATA-10: saved TVmaze data, one key per show id
 var GIST_FILENAME = 'myshows.json';          // GST-1
 var GIST_DESCRIPTION = 'My Shows V2';        // GST-17
 var APP_ID = 'myshows';                      // GST-1 "app" marker
@@ -483,7 +484,7 @@ var SYNC_DEBOUNCE_MS = 2000;                 // GST-4
 var TVMAZE_API = 'https://api.tvmaze.com';
 var GITHUB_API = 'https://api.github.com';
 var TOKEN_HELP_URL = 'https://github.com/CyberAdvisor/MyShows-v2#creating-your-github-token';
-var APP_VERSION = '2.8.1';                   // VER-1: must match the newest changelog entry
+var APP_VERSION = '2.9.0';                   // VER-1: must match the newest changelog entry
 var CONFIRM_MS = 5000;                       // ADD-5: how long the add confirmation shows
 var TVMAZE_MAX_REQUESTS = 20;                // LOAD-2: once TVmaze has refused a request (429), pace to about 20 requests...
 var TVMAZE_WINDOW_MS = 10000;                // ...per 10 seconds, TVmaze's limit from one IP address
@@ -572,6 +573,38 @@ function rememberWatchedCode(item, episodes) {
 // LOAD-14: true when data loaded at `loadedAt` (ms) is older than `maxAgeMs`.
 function isStale(loadedAt, now, maxAgeMs) {
   return !loadedAt || now - loadedAt > maxAgeMs;
+}
+
+// LOAD-17/DATA-10: the trimmed copy of a show's TVmaze data saved on the
+// device. `episodes` must already be in broadcast order (sortedEpisodes).
+// Every episode keeps only what the list and status need; the image and
+// synopsis are kept for the next episode to watch (`nextEpisodeId`) only.
+function trimShowData(show, episodes, nextEpisodeId, loadedAt) {
+  return {
+    show: { id: show.id, name: show.name, status: show.status },
+    episodes: episodes.map(function (e) {
+      var kept = { id: e.id, name: e.name, season: e.season, number: e.number, airdate: e.airdate, runtime: e.runtime };
+      // Copied only when known: a missing synopsis (undefined, DET-7) must
+      // not become "TVmaze has none" (null).
+      if (e.id === nextEpisodeId) {
+        if (e.image !== undefined) kept.image = e.image && e.image.medium ? { medium: e.image.medium } : null;
+        if (e.summary !== undefined) kept.summary = e.summary;
+      }
+      return kept;
+    }),
+    loadedAt: loadedAt
+  };
+}
+
+// DATA-10: true when `data` is a usable saved copy of show `showId`.
+// Anything else (damaged, old shape, wrong show) is ignored.
+function isValidShowData(data, showId) {
+  if (!isPlainObject(data) || !isPlainObject(data.show) || data.show.id !== showId) return false;
+  if (typeof data.show.name !== 'string' || typeof data.loadedAt !== 'number') return false;
+  if (!Array.isArray(data.episodes)) return false;
+  return data.episodes.every(function (e) {
+    return isPlainObject(e) && typeof e.id === 'number' && typeof e.season === 'number';
+  });
 }
 
 // ADD-10: a failed Add Show search in plain words, with the technical
@@ -1052,12 +1085,50 @@ function saveSyncSettings(settings) {
   writeJson(SYNC_KEY, settings);
 }
 
+// LOAD-17: the saved TVmaze data for one show, or null when there is
+// none or it fails validation (DATA-10).
+function loadShowData(showId) {
+  var data = readJson(SHOW_DATA_PREFIX + showId);
+  return isValidShowData(data, showId) ? data : null;
+}
+
+// LOAD-17: saves one show's trimmed data. Best effort and silent: if the
+// device's storage is full, that show just loads from TVmaze next time.
+// Deliberately not writeJson, so it never raises the MSG-1 save message.
+function saveShowData(showId, data) {
+  try {
+    localStorage.setItem(SHOW_DATA_PREFIX + showId, JSON.stringify(data));
+  } catch (e) { /* best effort */ }
+}
+
+function removeShowData(showId) {
+  try {
+    localStorage.removeItem(SHOW_DATA_PREFIX + showId);
+  } catch (e) { /* nothing to remove */ }
+}
+
+// DATA-10: removes saved data for every show not in `library`
+// (all of it when the library is empty).
+function removeShowDataExcept(library) {
+  var keep = {};
+  library.forEach(function (item) { keep[SHOW_DATA_PREFIX + item.showId] = true; });
+  try {
+    var stale = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (key && key.indexOf(SHOW_DATA_PREFIX) === 0 && !keep[key]) stale.push(key);
+    }
+    stale.forEach(function (key) { localStorage.removeItem(key); });
+  } catch (e) { /* nothing to remove */ }
+}
+
 // Disconnect (SYN-6): remove everything this app stores on the device.
 function clearLocalData() {
   try {
     localStorage.removeItem(SYNC_KEY);
     localStorage.removeItem(LIBRARY_KEY);
   } catch (e) { /* nothing else to clear */ }
+  removeShowDataExcept([]);
 }
 
 // ---------------------------------------------------------------------
@@ -2021,9 +2092,13 @@ function renderDetail() {
     html += '<tr><td>Seasons remaining</td><td>' + seasonsInfo.remaining + ' of ' + seasonsInfo.total + '</td></tr>';
     html += '</table>';
 
-    var summary = stripHtml(ep.summary);
-    html += '<p class="field-label" style="margin-top:16px;">Synopsis</p>';
-    html += '<p class="synopsis">' + escapeHtml(summary || 'No synopsis available.') + '</p>';
+    // DET-7: a synopsis that wasn't saved (undefined) is left out until
+    // fresh data arrives; null means TVmaze has none.
+    if (ep.summary !== undefined) {
+      var summary = stripHtml(ep.summary);
+      html += '<p class="field-label" style="margin-top:16px;">Synopsis</p>';
+      html += '<p class="synopsis">' + escapeHtml(summary || 'No synopsis available.') + '</p>';
+    }
 
     if (status.group === 'available') {
       html += '<button class="primary" id="mark-watched-btn">Mark watched</button>';
@@ -2557,6 +2632,7 @@ function markWatched(showId, fromDetail) {
   if (c.status.group === 'available') item.availableOrder = nextBottomAvailableOrder(state.library);
   rememberWatchedCode(item, c.episodes);
   saveLibrary(state.library);
+  saveComputedShowData(showId);
 
   if (fromDetail && !c.status.nextEpisode) state.view = 'list';
   render();
@@ -2574,6 +2650,7 @@ function stepEpisode(showId, direction) {
   c.status = computeShowStatus(c.show, c.episodes, item.watchedEpisodeId);
   rememberWatchedCode(item, c.episodes);
   saveLibrary(state.library);
+  saveComputedShowData(showId);
   render();
   var ep = c.status.nextEpisode;
   showToast(ep ? 'Now up to ' + formatEpisodeCode(ep) + (ep.name ? ' - ' + ep.name : '')
@@ -2585,6 +2662,7 @@ function removeShow(showId) {
   state.library = state.library.filter(function (i) { return i.showId !== showId; });
   delete state.computed[showId];
   delete state.failed[showId];
+  removeShowData(showId); // LOAD-17
   saveLibrary(state.library);
   state.view = 'list';
   render();
@@ -2611,6 +2689,34 @@ function reactivateShow(showId) {
   delete item.archivedSnapshot;
   saveLibrary(state.library);
   render();
+}
+
+// LOAD-17: saves the trimmed copy of a show's data in state.computed,
+// with the synopsis of its current next episode.
+function saveComputedShowData(showId) {
+  var c = state.computed[showId];
+  if (!c) return;
+  var next = c.status.nextEpisode;
+  saveShowData(showId, trimShowData(c.show, c.episodes, next ? next.id : null, c.loadedAt));
+}
+
+// LOAD-18: fills state.computed from saved data, so the list is drawn
+// complete at startup. Skipped for a show still resolving an Add choice
+// (ADD-8) or whose last-watched episode isn't in the saved list: that may
+// be newer progress from another device, and LOAD-12 is only decided on
+// fresh data. Those load from TVmaze as before.
+function useSavedShowData(library) {
+  library.forEach(function (item) {
+    if (item.pendingSeasonNumber || item.pendingCaughtUp) return;
+    var saved = loadShowData(item.showId);
+    if (!saved || progressLost(saved.episodes, item.watchedEpisodeId)) return;
+    state.computed[item.showId] = {
+      show: saved.show,
+      episodes: saved.episodes,
+      status: computeShowStatus(saved.show, saved.episodes, item.watchedEpisodeId),
+      loadedAt: saved.loadedAt
+    };
+  });
 }
 
 // Loads TVmaze data for the given items and computes their status.
@@ -2660,6 +2766,7 @@ function refreshComputedFor(items, options) {
       if (progressLost(episodes, item.watchedEpisodeId)) {
         // LOAD-12: never treat the show as unstarted; the user fixes it.
         delete state.computed[showId];
+        removeShowData(showId);
         if (inLibrary) state.failed[showId] = 'changed';
         if (inLibrary && described) writeLocalLibrary(state.library);
         return;
@@ -2674,9 +2781,19 @@ function refreshComputedFor(items, options) {
       state.computed[showId] = { show: show, episodes: episodes, status: status, loadedAt: Date.now() };
       if (inLibrary && changed) saveLibrary(state.library);
       else if (inLibrary && described) writeLocalLibrary(state.library);
+      if (inLibrary) saveComputedShowData(showId); // LOAD-17
     }).catch(function (err) {
-      // LOAD-15: a show that already has data keeps it.
-      if (findItem(showId) && !state.computed[showId]) state.failed[showId] = classifyLoadFailure(err);
+      if (!findItem(showId)) return;
+      var kind = classifyLoadFailure(err);
+      if (kind === 'gone') {
+        // LOAD-19: gone wins over existing or saved data, or the user
+        // would never be told.
+        delete state.computed[showId];
+        removeShowData(showId);
+        state.failed[showId] = kind;
+      } else if (!state.computed[showId]) {
+        state.failed[showId] = kind; // LOAD-15: a show that already has data keeps it
+      }
     }).then(function () {
       delete state.loading[showId];
       onShowSettled(showId);
@@ -2749,6 +2866,7 @@ function refreshAfterLibraryChange() {
   if (described) writeLocalLibrary(state.library); // LOAD-1, LOAD-13: device only
   Object.keys(state.computed).forEach(function (id) { if (!keep[id]) delete state.computed[id]; });
   Object.keys(state.failed).forEach(function (id) { if (!keep[id]) delete state.failed[id]; });
+  removeShowDataExcept(state.library); // LOAD-17: shows the pull removed
   return refreshComputedFor(missing);
 }
 
@@ -2807,10 +2925,14 @@ function init() {
     render();
     return;
   }
-  // GST-3: render from the working copy at once, then pull. Shows fill
-  // in as their TVmaze data arrives (LOAD-8).
+  // GST-3: render from the working copy at once, then pull. LOAD-18:
+  // shows with saved TVmaze data are drawn complete straight away; every
+  // show is then refreshed from TVmaze in the background, and any without
+  // saved data fill in as they arrive (LOAD-8).
   var local = loadLocalLibrary();
   state.library = local.library;
+  removeShowDataExcept(state.library);
+  useSavedShowData(state.library);
   if (local.damaged) {
     // GST-20: a missing or damaged working copy must never be pushed over
     // the gist. Forgetting the last local change makes the pull win.
@@ -2818,8 +2940,10 @@ function init() {
     saveSyncSettings(sync.settings);
   }
   state.view = 'list';
-  render();
+  // Started before the first draw so shows still to load are already
+  // marked: the loading line (LOAD-8) is right from the start.
   refreshComputedFor(state.library);
+  render();
   syncNow();
 }
 

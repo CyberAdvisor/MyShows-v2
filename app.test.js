@@ -14,6 +14,7 @@ const scriptBody = html.match(/<script>([\s\S]*)<\/script>/)[1];
 
 const LIBRARY_KEY = 'my-shows-library-v2';
 const SYNC_KEY = 'my-shows-sync-v2';
+const SHOW_DATA_PREFIX = 'my-shows-show-v2:';
 const T0 = '2026-07-01T00:00:00.000Z'; // "last synced" time used by seeded data
 
 // ---------------------------------------------------------------------
@@ -201,6 +202,10 @@ async function start(opts) {
     window.localStorage.setItem(SYNC_KEY, JSON.stringify(opts.settings || { gistId, token: 'good', lastSyncedAt: T0, lastLocalChangeAt: T0 }));
     env.gistId = gistId;
   }
+  // opts.storage: extra localStorage entries (e.g. saved show data, DATA-10)
+  // present before the app starts. opts.beforeEval(window) runs just before.
+  Object.entries(opts.storage || {}).forEach(([key, value]) => window.localStorage.setItem(key, value));
+  if (opts.beforeEval) opts.beforeEval(window);
   // opts.constants shortens TVmaze pacing/retry constants before the app
   // starts (its first load begins immediately). Defaults are checked in
   // testTvmazePacingDefaults.
@@ -272,6 +277,30 @@ function clickSegment(env, key) {
 }
 function storedLibrary(env) { return JSON.parse(env.window.localStorage.getItem(LIBRARY_KEY)); }
 function storedSettings(env) { return JSON.parse(env.window.localStorage.getItem(SYNC_KEY)); }
+// Saved show data on the device (DATA-10): { key: raw JSON string }.
+function savedShowData(env) {
+  const out = {};
+  const ls = env.window.localStorage;
+  for (let i = 0; i < ls.length; i++) {
+    const key = ls.key(i);
+    if (key.startsWith(SHOW_DATA_PREFIX)) out[key] = ls.getItem(key);
+  }
+  return out;
+}
+function savedShowIds(env) {
+  return Object.keys(savedShowData(env)).map(k => Number(k.slice(SHOW_DATA_PREFIX.length))).sort((a, b) => a - b);
+}
+// A TVmaze mock that answers nothing until release() (or fails, if failAll).
+function heldTvmaze() {
+  const held = { open: false, failAll: false, waiting: [] };
+  held.handler = url => {
+    if (held.failAll) return Promise.reject(new TypeError('Failed to fetch'));
+    if (held.open) return null;
+    return new Promise(resolve => held.waiting.push(() => resolve(tvmazeFetch(url))));
+  };
+  held.release = () => { held.open = true; held.waiting.splice(0).forEach(go => go()); };
+  return held;
+}
 
 // The five-show library used by segment tests: one show per section.
 function mixedLibrary() {
@@ -1614,6 +1643,169 @@ async function testSearchErrorsInPlainWords() {
   console.log('testSearchErrorsInPlainWords passed.');
 }
 
+
+// =====================================================================
+// Instant list from saved show data (§4.10)
+// =====================================================================
+
+async function testListDrawnFromSavedData() {
+  // LOAD-17: a first open loads from TVmaze and saves every show's data.
+  const first = await start({ library: mixedLibrary() });
+  await wait(40);
+  assert.deepStrictEqual(savedShowIds(first), [251, 501, 777, 888, 999], 'every show saved on the device');
+  const bear = JSON.parse(savedShowData(first)[SHOW_DATA_PREFIX + 501]);
+  assert.deepStrictEqual(bear.show, { id: 501, name: 'The Bear', status: 'Running' });
+  assert.strictEqual(bear.episodes.find(e => e.id === 1003).summary, '<p>Ep 3.</p>', 'next episode keeps its synopsis');
+  assert.ok(!('summary' in bear.episodes.find(e => e.id === 1001)), 'other episodes are trimmed');
+  assert.ok(!JSON.stringify(first.gh.content(first.gistId)).includes('airdate'), 'saved data never reaches the gist');
+
+  // LOAD-18: the next open draws the complete list before TVmaze answers.
+  const held = heldTvmaze();
+  const env = await start({ library: mixedLibrary(), storage: savedShowData(first), tvmaze: held.handler });
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting3', 'Done1'], 'complete counts at once');
+  assert.ok(!env.doc.getElementById('loading-line'), 'no loading line with saved data');
+  assert.deepStrictEqual(sectionTitles(env)['Currently running shows'], ['The Bear'], 'rows drawn from saved data');
+  assert.ok(env.tvmazeLog.length >= 10, 'every show is still refreshed from TVmaze in the background');
+  click(env, 'row-501');
+  await wait(5);
+  assert.ok(text(env, '#app').includes('Ep 3.'), 'detail shows the saved synopsis');
+  click(env, 'tab-show');
+
+  held.release();
+  await wait(40);
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting3', 'Done1'], 'unchanged after the refresh');
+  assert.strictEqual(env.gh.writes().length, 0, 'drawing from saved data pushes nothing');
+  console.log('testListDrawnFromSavedData passed.');
+}
+
+async function testSavedDataSkippedAndRemoved() {
+  const first = await start({ library: mixedLibrary() });
+  await wait(40);
+  const storage = savedShowData(first);
+  storage[SHOW_DATA_PREFIX + 4242] = storage[SHOW_DATA_PREFIX + 501].replace('"id":501', '"id":4242'); // not in the library
+  storage[SHOW_DATA_PREFIX + 888] = '{not json'; // damaged
+
+  // Show 501's progress is newer than its saved episodes (another device):
+  // the saved data isn't used, and LOAD-12 isn't decided from it.
+  const library = mixedLibrary();
+  library[0].watchedEpisodeId = 1999;
+  const held = heldTvmaze();
+  const env = await start({ library, storage, tvmaze: held.handler });
+  assert.strictEqual(text(env, '#loading-line'), 'Loading 2 more shows…', 'unusable and damaged saved data load as before');
+  assert.ok(!env.doc.getElementById('failed-list'), 'not marked changed from saved data');
+  assert.ok(!savedShowIds(env).includes(4242), 'saved data for a show not in the library is removed at startup');
+  held.release();
+  await wait(40);
+
+  // Deleting a show removes its saved data (LOAD-17).
+  clickSegment(env, 'waiting');
+  await wait(5);
+  click(env, 'row-999');
+  await wait(5);
+  click(env, 'remove-link');
+  await wait(5);
+  assert.ok(!savedShowIds(env).includes(999), 'removed on delete');
+
+  // A pull that removes a show removes its saved data.
+  const remote = storedLibrary(env).filter(i => i.showId !== 777);
+  env.gh.gists[env.gistId].files['myshows.json'].content = JSON.stringify(payload(remote, '2026-12-01T00:00:00.000Z'));
+  env.doc.dispatchEvent(new env.window.Event('visibilitychange'));
+  await wait(60);
+  assert.ok(!storedLibrary(env).some(i => i.showId === 777), 'pull applied');
+  assert.ok(!savedShowIds(env).includes(777), 'removed when a sync removes the show');
+
+  // Disconnect removes all of it (SYN-6).
+  click(env, 'tab-settings');
+  await wait(5);
+  click(env, 'settings-sync');
+  await wait(5);
+  click(env, 'disconnect-btn');
+  await wait(5);
+  assert.deepStrictEqual(savedShowIds(env), [], 'removed on Disconnect');
+  console.log('testSavedDataSkippedAndRemoved passed.');
+}
+
+async function testFailedRefreshKeepsSavedData() {
+  // LOAD-15 with saved data: offline, the list still opens complete.
+  const first = await start({ library: mixedLibrary() });
+  await wait(40);
+  const held = heldTvmaze();
+  held.failAll = true;
+  const env = await start({ library: mixedLibrary(), storage: savedShowData(first), tvmaze: held.handler });
+  await wait(40);
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting3', 'Done1'], 'every show listed from saved data');
+  assert.ok(!env.doc.getElementById('failed-list'), 'nothing listed as failed');
+  assert.deepStrictEqual(savedShowIds(env), [251, 501, 777, 888, 999], 'saved data kept');
+  console.log('testFailedRefreshKeepsSavedData passed.');
+}
+
+async function testGoneOverridesSavedData() {
+  // LOAD-19: a 404 marks the show gone even though it has saved data.
+  const first = await start({ library: mixedLibrary() });
+  await wait(40);
+  const storage = savedShowData(first);
+  storage[SHOW_DATA_PREFIX + 31337] = storage[SHOW_DATA_PREFIX + 888].replace('"id":888', '"id":31337');
+  const library = mixedLibrary().concat([{ showId: 31337, name: 'Old Show', platform: 'Hulu', watchedEpisodeId: 8001 }]);
+  const env = await start({ library, storage, tvmaze: goneShow });
+  await wait(40);
+  assert.deepStrictEqual(failedRowTitles(env), ['Old Show'], 'listed under Couldn’t load');
+  assert.ok(text(env, '#row-31337').includes('No longer on TVmaze'), 'as gone');
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting3', 'Done1'], 'no longer counted');
+  assert.ok(!savedShowIds(env).includes(31337), 'its saved data is removed');
+  console.log('testGoneOverridesSavedData passed.');
+}
+
+async function testSynopsisNotSaved() {
+  // DET-7: Mark watched while offline moves to an episode whose synopsis
+  // wasn't saved; it is left out, not shown as "No synopsis available."
+  const library = [{ showId: 501, name: 'The Bear', platform: 'Hulu', watchedEpisodeId: 1001 }];
+  const first = await start({ library });
+  await wait(40);
+  const held = heldTvmaze();
+  held.failAll = true;
+  const env = await start({ library, storage: savedShowData(first), tvmaze: held.handler });
+  await wait(40);
+  click(env, 'row-501');
+  await wait(5);
+  assert.ok(text(env, '#app').includes('Ep 2.'), 'saved synopsis of the next episode');
+  click(env, 'mark-watched-btn');
+  await wait(5);
+  assert.ok(text(env, '#app').includes('S04E03'), 'moved on to S04E03');
+  assert.ok(!text(env, '#app').includes('Synopsis'), 'no Synopsis heading without a saved synopsis');
+  assert.ok(!text(env, '#app').includes('No synopsis available'), 'never claims TVmaze has none');
+  assert.ok(!env.doc.querySelector('.episode-image'), 'no image either');
+
+  // Back online, the refreshed data brings it back and saves it.
+  held.failAll = false;
+  held.release();
+  env.window.refreshComputedFor(env.window.state.library);
+  await wait(40);
+  assert.ok(text(env, '#app').includes('Ep 3.'), 'synopsis shown once fresh data arrives');
+  const saved = JSON.parse(savedShowData(env)[SHOW_DATA_PREFIX + 501]);
+  assert.strictEqual(saved.episodes.find(e => e.id === 1003).summary, '<p>Ep 3.</p>', 'new next episode saved with its synopsis');
+  console.log('testSynopsisNotSaved passed.');
+}
+
+async function testFullStorageIsSilent() {
+  // LOAD-17: saving show data is best effort; a full device shows nothing
+  // and the app works as before.
+  const env = await start({
+    library: mixedLibrary(),
+    beforeEval: window => {
+      const realSetItem = window.Storage.prototype.setItem;
+      window.Storage.prototype.setItem = function (key, value) {
+        if (key.startsWith(SHOW_DATA_PREFIX)) throw new Error('QuotaExceededError');
+        return realSetItem.call(this, key, value);
+      };
+    }
+  });
+  await wait(40);
+  assert.deepStrictEqual(segmentButtons(env), ['Watching1', 'Waiting3', 'Done1'], 'list loads');
+  assert.deepStrictEqual(savedShowIds(env), [], 'nothing saved');
+  assert.ok(!text(env, '#app').includes('Could not save'), 'no save failure message');
+  console.log('testFullStorageIsSilent passed.');
+}
+
 (async () => {
   try {
     await testSetupBlocksAppUntilConnected();
@@ -1666,6 +1858,12 @@ async function testSearchErrorsInPlainWords() {
     await testDamagedLocalCopyIsNeverPushed();
     await testMessagesStackAndDismiss();
     await testSearchErrorsInPlainWords();
+    await testListDrawnFromSavedData();
+    await testSavedDataSkippedAndRemoved();
+    await testFailedRefreshKeepsSavedData();
+    await testGoneOverridesSavedData();
+    await testSynopsisNotSaved();
+    await testFullStorageIsSilent();
     console.log('All app integration tests passed.');
     openWindows.forEach(w => w.close());
   } catch (err) {

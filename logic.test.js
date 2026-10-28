@@ -27,8 +27,49 @@ const {
   decideSync, nextTimestamp, findCandidateGistIds, classifyCandidates, describeSyncError, formatSyncTime,
   lastAiredEpisodeId, APP_VERSION, stepWatchedEpisode, splitV1Backup, V1_SKIP_REASONS,
   classifyLoadFailure, storedShowName, rememberShowName, buildFailedEntries, throttleDelay,
-  localDateString, progressLost, rememberWatchedCode, isStale, searchErrorText
+  localDateString, progressLost, rememberWatchedCode, isStale, searchErrorText,
+  trimShowData, isValidShowData
 } = L;
+
+// =====================================================================
+// Saved show data (§4.10)
+// =====================================================================
+
+// --- LOAD-17 / DATA-10: trimming and validating saved show data ---
+{
+  const show = { id: 501, name: 'The Bear', status: 'Running', premiered: '2022-06-23', network: { name: 'FX' }, _embedded: { episodes: [] } };
+  const episodes = [
+    { id: 1, season: 1, number: 1, name: 'One', airdate: '2026-01-01', runtime: 30, summary: '<p>One.</p>', image: { medium: 'm1.jpg', original: 'o1.jpg' }, url: 'x', _links: {} },
+    { id: 2, season: 1, number: 2, name: 'Two', airdate: '2026-01-08', runtime: 31, summary: '<p>Two.</p>', image: { medium: 'm2.jpg', original: 'o2.jpg' } },
+    { id: 3, season: 1, number: null, name: 'Special', airdate: null, runtime: null, summary: null, image: null }
+  ];
+  const saved = trimShowData(show, episodes, 2, 12345);
+  assert.deepStrictEqual(saved.show, { id: 501, name: 'The Bear', status: 'Running' }, 'show keeps id, name and status only');
+  assert.deepStrictEqual(saved.episodes[0], { id: 1, name: 'One', season: 1, number: 1, airdate: '2026-01-01', runtime: 30 },
+    'other episodes keep no synopsis or image');
+  assert.deepStrictEqual(saved.episodes[1], { id: 2, name: 'Two', season: 1, number: 2, airdate: '2026-01-08', runtime: 31,
+    image: { medium: 'm2.jpg' }, summary: '<p>Two.</p>' }, 'the next episode keeps its synopsis and medium image');
+  assert.strictEqual(saved.loadedAt, 12345);
+  assert.deepStrictEqual(saved.episodes.map(e => e.id), [1, 2, 3], 'order is kept');
+
+  const none = trimShowData(show, [episodes[2]], 3, 1);
+  assert.strictEqual(none.episodes[0].summary, null, 'TVmaze having no synopsis stays null ("No synopsis available.")');
+  assert.strictEqual(none.episodes[0].image, null);
+
+  // DET-7: a synopsis already missing (from saved data) stays missing, never null.
+  const resaved = trimShowData(saved.show, saved.episodes, 1, 2);
+  assert.ok(!('summary' in resaved.episodes[0]) && !('image' in resaved.episodes[0]), 'an unknown synopsis is not turned into "none"');
+  assert.strictEqual(trimShowData(show, episodes, null, 1).episodes.filter(e => 'summary' in e).length, 0, 'caught up: no synopsis kept');
+
+  assert.strictEqual(isValidShowData(saved, 501), true, 'a saved copy is valid');
+  assert.strictEqual(isValidShowData(JSON.parse(JSON.stringify(saved)), 501), true, 'valid after a round trip through JSON');
+  assert.strictEqual(isValidShowData(saved, 502), false, 'wrong show id');
+  assert.strictEqual(isValidShowData(null, 501), false);
+  assert.strictEqual(isValidShowData({ show: saved.show, episodes: saved.episodes }, 501), false, 'no loadedAt');
+  assert.strictEqual(isValidShowData(Object.assign({}, saved, { episodes: 'x' }), 501), false, 'episodes not a list');
+  assert.strictEqual(isValidShowData(Object.assign({}, saved, { episodes: [{ id: 'a', season: 1 }] }), 501), false, 'damaged episode');
+  assert.strictEqual(isValidShowData(Object.assign({}, saved, { show: { id: 501 } }), 501), false, 'show with no name');
+}
 
 // =====================================================================
 // Reliability fixes (§4.9)

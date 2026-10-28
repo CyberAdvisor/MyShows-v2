@@ -84,6 +84,7 @@ If your token expires or is revoked, the app keeps working from the copy on your
 ## Data storage and privacy
 
 - **Your list lives in your own gist**, with a working copy in your browser's local storage on each device. There is no My Shows server and no shared database.
+- **Show details are saved on each device** (episode names and air dates from TVmaze, in local storage) so your list opens instantly. They are never sent to your gist or put in backups, and are removed when you delete a show or disconnect the device.
 - **Your token is stored only on your device** (in local storage) and is sent only to GitHub.
 - **Sync is last-write-wins.** The most recent change wins; there's no merging of edits made at the same moment on two devices.
 - **Offline is fine.** Changes are saved on the device and sent to your gist when you're back online.

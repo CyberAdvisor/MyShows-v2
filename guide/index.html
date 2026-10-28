@@ -121,7 +121,7 @@
   <a class="back-link" href="/">&larr; My Shows</a>
   <h1>How to use My Shows V2</h1>
   <p class="subhead">Your list is kept in your own GitHub Gist, so it's the same on your iPhone, iPad and Mac.</p>
-  <p class="guide-version">This guide is for version <span id="guide-version">2.8.1</span>. Your version is shown under "My Shows" in the app. <a href="/changelog/">What's changed</a></p>
+  <p class="guide-version">This guide is for version <span id="guide-version">2.9.0</span>. Your version is shown under "My Shows" in the app. <a href="/changelog/">What's changed</a></p>
 
   <p class="note">V2 is a separate app from My Shows V1 (myshows.fyi), and V1 keeps working as before. To bring your V1 list across, download a backup in V1, then in V2 go to <strong>Settings › Backup &amp; restore › Choose backup file</strong>. It replaces whatever is in your V2 list. Shows with no "Watching on" platform, or saved by a much older version of V1, are left out and listed afterwards so you can add them again.</p>
 
@@ -215,14 +215,14 @@
   <p class="note">Tapping <strong>Delete series</strong> immediately removes the show and its watch history. There's no confirmation step and no undo, and within a few seconds it's gone from all your devices. If you might want the show back later, use Suspend instead.</p>
 
   <h2 id="cant-load">When a show can’t load</h2>
-  <p>Every show’s episodes come from TVmaze each time you open My Shows. If a show can’t be loaded, it isn’t hidden: it’s listed by name in a <strong>Couldn’t load</strong> section at the top of your list, on every tab, and the message above your list names it too. It isn’t counted in Watching, Waiting or Done until it loads.</p>
+  <p>My Shows keeps each show’s episode details on your device, so your list appears complete as soon as you open it. It then checks TVmaze for anything new and updates any show that changed, so a show can occasionally move a second or two after opening. If a show can’t be loaded, it isn’t hidden: it’s listed by name in a <strong>Couldn’t load</strong> section at the top of your list, on every tab, and the message above your list names it too. It isn’t counted in Watching, Waiting or Done until it loads.</p>
   <ul>
     <li><strong>Couldn’t load — tap to retry.</strong> TVmaze didn’t answer this time (a connection problem, TVmaze being busy, or too many requests at once). Your place in the show is kept. Tap <strong>Retry</strong> in the message, or tap the show and then <strong>Retry</strong>. My Shows also tries again by itself the next time you open the app or come back to it.</li>
     <li><strong>Episodes changed on TVmaze — tap to fix.</strong> TVmaze changed the show’s episode list and the last episode you watched can no longer be found. My Shows doesn’t guess or start you over: tap the show to see the last episode you watched, then tap <strong>Delete series</strong> and add it again with Add Show, choosing <strong>Season/Episode last watched</strong>.</li>
     <li><strong>No longer on TVmaze — tap to delete.</strong> TVmaze has removed the show, so its episodes can’t be tracked any more. Tap it, then <strong>Delete series</strong>. If the show was given a new listing on TVmaze, add it again with Add Show. My Shows never deletes a show by itself.</li>
   </ul>
   <p class="note">My Shows remembers each show’s name from the last time it loaded. A show added before version 2.7.0 that has never loaded since is shown as <strong>TVmaze show #</strong> and a number, with the platform you entered.</p>
-  <p>Shows appear as soon as their details arrive from TVmaze, usually straight away. TVmaze limits how quickly an app can ask for data, so if it says My Shows is asking too fast, the remaining shows appear a few at a time while they load (<strong>Loading 12 more shows…</strong>).</p>
+  <p>The first time you open My Shows on a device, or after another device adds a show, those shows appear as soon as their details arrive from TVmaze, usually straight away. TVmaze limits how quickly an app can ask for data, so if it says My Shows is asking too fast, the remaining shows appear a few at a time while they load (<strong>Loading 12 more shows…</strong>).</p>
   <p>If you leave My Shows open, it catches up when you come back to it: shows move between groups for today’s date, and details more than 12 hours old are fetched again. If that fetch fails, the show keeps the details it already had.</p>
   <p>Other messages, such as a season and episode that couldn’t be found when you added a show, appear above your list and stay until you tap ✕.</p>
 
@@ -234,7 +234,7 @@
     <li><strong>Sync error — token rejected</strong> — your token expired or was revoked. Create a new one and use <strong>Change token</strong>. The app keeps working in the meantime.</li>
     <li><strong>Sync error — gist not found</strong> — the gist was deleted on GitHub. <strong>Recreate gist</strong> makes a new one from the list on this device.</li>
   </ul>
-  <p><strong>Disconnect this device</strong> removes your token and list from this device only; your gist keeps the list and connecting again loads it back.</p>
+  <p><strong>Disconnect this device</strong> removes your token and list from this device only; your gist keeps the list and connecting again loads it back. The show details saved on the device are removed too.</p>
 
   <footer>
     <p><a href="/changelog/">Changelog</a> &middot; <a href="https://github.com/CyberAdvisor/MyShows-v2" target="_blank" rel="noopener">Source on GitHub</a> &middot; <a href="https://github.com/CyberAdvisor/MyShows-v2/issues" target="_blank" rel="noopener">Report an issue</a></p>
